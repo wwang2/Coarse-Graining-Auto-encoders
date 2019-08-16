@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from torch.nn import functional as F
+from torch.nn import Parameter
 import numpy 
 
 def temp_scheduler(max_epoch, device, decay_portion=0.4, tmin=0.2):
@@ -35,17 +36,16 @@ def gumbel_softmax(logits, temperature, device, hard=False):
     return y
 
 class encoder(torch.nn.Module):
-    def __init__(self, in_dim, out_dim, par_init, hard=False, device='cpu'):
+    def __init__(self, in_dim, out_dim, hard=False, device='cpu'):
         super(encoder, self).__init__()
         self.out_dim = out_dim
         self.in_dim = in_dim
         self.hard = hard
-        self.par_init = par_init
         self.reset_parameters()
         self.device = device
         
     def reset_parameters(self):
-        self.weight1 = Parameter(torch.ones(self.out_dim, self.in_dim) * self.par_init)
+        self.weight1 = Parameter(torch.rand(self.out_dim, self.in_dim))
     def forward(self, xyz, temp): 
         CG = gumbel_softmax(self.weight1.t(), temp, hard=self.hard, device=self.device).t()
         self.CG = CG/CG.sum(1).unsqueeze(1)
