@@ -4,6 +4,14 @@ Implementation of coarse-graining Autoencoders for our paper https://arxiv.org/a
 
 We include several simple examples of coarse-graining molecules.
 
+<p align="center">
+  <img src="movies/schematic.png" width="650">
+</p>
+<p align="center">
+  <img src="movies/decode.gif" width="220"/> 
+  <img src="movies/cg.gif" width="220"/> 
+</p>
+
 required packages:
 ```
 mdtraj     1.9.2
