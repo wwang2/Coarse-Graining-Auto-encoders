@@ -4,6 +4,15 @@ Implementation of coarse-graining Autoencoders for our paper https://arxiv.org/a
 
 We include several simple examples of coarse-graining molecules.
 
+required packages:
+```
+mdtraj     1.9.2
+pytorch    1.1.0 
+numpy
+```
+
+
+
 To cite our work:
 
 ```
