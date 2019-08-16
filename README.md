@@ -2,6 +2,11 @@
 
 Implementation of coarse-graining Autoencoders for our paper https://arxiv.org/abs/1812.02706
 
+
+<img src="movies/decode.gif" width="320">
+<img src="movies/cg.gif" width="320">
+
+
 We include several simple examples of coarse-graining molecules.
 
 required packages:
