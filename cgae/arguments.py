@@ -3,7 +3,7 @@ import argparse
 
 
 def cgae_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     # Data
     parser.add_argument("--nte", type=int, default=1000, help="Number of test examples.")
     parser.add_argument("--ntr", type=int, default=3000, help="Number of training examples.")
@@ -34,20 +34,6 @@ def cgae_parser():
     parser.add_argument("--pickle", type=str, default='out.pkl', help="File for results.")
     parser.add_argument("--save_state", action='store_true', help="Save encoder and decoder state. Default False.")
     return parser
-
-
-def get_precision_device(args):
-    if args.double:
-        precision = torch.float64
-    else:
-        precision = torch.float32
-    torch.set_default_dtype(precision)
-
-    if torch.cuda.is_available() and not args.cpu:
-        device = torch.device(f"cuda:{args.gpu}")
-    else:
-        device = torch.device("cpu")
-    return precision, device
 
 
 def main():
