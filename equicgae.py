@@ -7,16 +7,14 @@ import torch.utils.data
 import numpy as np
 import mdtraj as md
 import argparse
-from functools import partial
 from time import perf_counter
 from tqdm import tqdm
 
 from se3cnn.non_linearities import rescaled_act
-from se3cnn.non_linearities.gated_block import GatedBlock
-from se3cnn.point.kernel import Kernel
-from se3cnn.point.operations import Convolution
-from se3cnn.point.radial import CosineBasisModel
 from se3cnn.SO3 import spherical_harmonics_xyz
+
+from cgae.gs import gumbel_softmax
+from cgae.equi import Encoder, Decoder, ACTS
 
 parser = argparse.ArgumentParser()
 # Data
@@ -34,9 +32,8 @@ parser.add_argument("--fm_co", type=float, default=0.005, help="Coefficient mult
 parser.add_argument("--scalar_encoder", action='store_true', help="Set the encoder to only deal in scalar values.")
 
 # General hyper parameters
-ACTS = ['sigmoid', 'tanh', 'relu', 'absolute', 'softplus', 'shifted_softplus']
-parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS, help="Select scalar activation.")
-parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS, help="Select gate activation.")
+parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS.keys(), help="Select scalar activation.")
+parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS.keys(), help="Select gate activation.")
 parser.add_argument("--softplus_beta", type=float, default=1.0, help="Which beta for softplus and shifted softplus?")
 parser.add_argument("--bs", type=int, default=32, help="Batch size.")
 parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate.")
@@ -49,7 +46,7 @@ parser.add_argument("--l4", type=int, default=5)
 parser.add_argument("--l5", type=int, default=5)
 parser.add_argument("--enc_L", type=int, default=3, help="How many layers to create for the encoder.")
 parser.add_argument("--dec_L", type=int, default=1, help="How many layers to create for the decoder.")
-parser.add_argument("--rad_act", type=str, default="relu", choices=ACTS, help="Select radial activation.")
+parser.add_argument("--rad_act", type=str, default="relu", choices=ACTS.keys(), help="Select radial activation.")
 parser.add_argument("--rad_nb", type=int, default=20, help="Radial number of bases.")
 parser.add_argument("--rad_maxr", type=float, default=3, help="Max radius.")
 parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
@@ -84,9 +81,8 @@ else:
     DEVICE = torch.device("cpu")
 print(f"Calculating on {DEVICE}.")
 
-ACT_FNS = [rescaled_act.sigmoid, rescaled_act.tanh, rescaled_act.relu, rescaled_act.absolute,
-           rescaled_act.Softplus(args.softplus_beta), rescaled_act.ShiftedSoftplus(args.softplus_beta)]
-ACTS = {act: fn for act, fn in zip(ACTS, ACT_FNS)}
+ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
+ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
 
 def load_data(args):
@@ -104,95 +100,6 @@ def project_to_ylm(relative_coords, l_max=5, dtype=PRECISION, device=DEVICE):
     sh = spherical_harmonics_xyz(range(l_max + 1), relative_coords, dtype=dtype, device=device)
     rank = len(sh.shape)
     return sh.permute(*range(1, rank), 0)
-
-
-def sample_gumbel(shape, dtype=PRECISION, device=DEVICE, eps=1e-10):
-    uniform = torch.rand(shape, dtype=dtype, device=device)
-    return -torch.log(-torch.log(uniform + eps) + eps)
-
-
-def gumbel_softmax_sample(logits, temperature, dtype=PRECISION, device=DEVICE):
-    y = logits + sample_gumbel(logits.size(), dtype=dtype, device=device)
-    return torch.nn.functional.softmax(y / temperature, dim=-1)
-
-
-def gumbel_softmax(logits, temperature, dtype=PRECISION, device=DEVICE):
-    """Sample a gumbel softmax distribution in dim = -1. Returns gumble, straight-through gumble."""
-    y = gumbel_softmax_sample(logits, temperature, dtype=dtype, device=device)
-    y_hard = torch.zeros(y.shape, dtype=dtype, device=device).scatter_(-1, y.argmax(-1).unsqueeze(-1), 1.0)
-    y_hard = (y_hard - y).detach() + y
-    return y, y_hard
-    # if hard:
-    #     y_hard = torch.zeros(y.shape, dtype=dtype, device=device).scatter_(-1, y.argmax(-1).unsqueeze(-1), 1.0)
-    #     y = (y_hard - y).detach() + y
-    # return y
-
-
-class Encoder(torch.nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        radial_model = partial(
-            CosineBasisModel,
-            max_radius=args.rad_maxr,
-            number_of_basis=args.rad_nb,
-            h=args.rad_h,
-            L=args.rad_L,
-            act=ACTS[args.rad_act]
-        )
-        K = partial(Kernel, RadialModel=radial_model)
-        C = partial(Convolution, K)
-
-        if args.scalar_encoder:
-            Rs = [(args.enc_l0, 0)]
-            Rs = [[(args.atomic_nums, 0)]] + [Rs] * args.enc_L + [[(args.ncg, 0)]]
-        else:
-            Rs = [(args.enc_l0, 0), (args.l1, 1), (args.l2, 2), (args.l3, 3), (args.l4, 4), (args.l5, 5)]
-            Rs = [[(args.atomic_nums, 0)]] + [Rs] * args.enc_L + [[(args.ncg, 0)]]
-
-        self.layers = torch.nn.ModuleList(
-            [GatedBlock(Rs_in, Rs_out, ACTS[args.scalar_act], ACTS[args.gate_act], C)
-             for Rs_in, Rs_out in zip(Rs[:-1], Rs[1:-1])] +
-            [C(Rs[-2], Rs[-1])]
-        )
-        self.Rs = Rs
-
-    def forward(self, features, geometry):
-        output = features
-        for layer in self.layers:
-            output = layer(output.div(geometry.size(1) ** 0.5), geometry)  # Normalization of layers by number of atoms.
-        return output
-
-
-class Decoder(torch.nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        radial_model = partial(
-            CosineBasisModel,
-            max_radius=args.rad_maxr,
-            number_of_basis=args.rad_nb,
-            h=args.rad_h,
-            L=args.rad_L,
-            act=ACTS[args.rad_act]
-        )
-        K = partial(Kernel, RadialModel=radial_model)
-        C = partial(Convolution, K)
-
-        Rs = [(args.l0, 0), (args.l1, 1), (args.l2, 2), (args.l3, 3), (args.l4, 4), (args.l5, 5)]
-        Rs = [[(args.ncg, 0)]] + [Rs] * args.dec_L
-        Rs += [[(mul, l) for l, mul in enumerate([1] * (args.proj_lmax + 1))] * args.atomic_nums]
-
-        self.layers = torch.nn.ModuleList(
-            [GatedBlock(Rs_in, Rs_out, ACTS[args.scalar_act], ACTS[args.gate_act], C)
-             for Rs_in, Rs_out in zip(Rs[:-1], Rs[1:-1])] +
-            [C(Rs[-2], Rs[-1])]
-        )
-        self.Rs = Rs
-
-    def forward(self, features, geometry):
-        output = features
-        for layer in self.layers:
-            output = layer(output.div(geometry.size(1) ** 0.5), geometry)  # Normalization of layers by number of atoms.
-        return output
 
 
 def execute(args):

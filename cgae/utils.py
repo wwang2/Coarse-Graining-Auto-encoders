@@ -1,6 +1,5 @@
-import mdtraj as md
 import numpy as np
-import torch
+
 
 def save_traj(traj, Z, name):
     """Summary
@@ -12,8 +11,9 @@ def save_traj(traj, Z, name):
     """
     traj = np.array(traj)
     Z = np.array(Z * traj.shape[0]).reshape(traj.shape[0], len(Z), 1)
-    traj_write = np.dstack(( Z, traj))
+    traj_write = np.dstack((Z, traj))
     write_traj(filename=name, frames=traj_write)
+
 
 def write_traj(filename, frames):
     '''
@@ -24,12 +24,12 @@ def write_traj(filename, frames):
             path = "../../sim/topotools_ethane/ethane-nvt_unwrap.xyz"
             traj2write = trajconv(n_mol, n_atom, box_len, path)
             write_traj(path, traj2write)
-    '''    
-    file = open(filename,'w')
+    '''
+    file = open(filename, 'w')
     atom_no = frames.shape[1]
-    for i, frame in enumerate(frames): 
-        file.write( str(atom_no) + '\n')
-        file.write('Atoms. Timestep: '+ str(i)+'\n')
+    for i, frame in enumerate(frames):
+        file.write(str(atom_no) + '\n')
+        file.write('Atoms. Timestep: ' + str(i) + '\n')
         for atom in frame:
             if atom.shape[0] == 4:
                 try:
