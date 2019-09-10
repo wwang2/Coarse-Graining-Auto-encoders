@@ -5,8 +5,6 @@ import torch.optim
 import torch.utils.data
 
 import numpy as np
-import mdtraj as md
-import argparse
 from time import perf_counter
 from tqdm import tqdm
 
@@ -15,28 +13,14 @@ from se3cnn.SO3 import spherical_harmonics_xyz
 
 from cgae.gs import gumbel_softmax
 from cgae.equi import Encoder, Decoder, ACTS
+from cgae.arguments import cgae_parser
+from cgae.data import load_data
 
-parser = argparse.ArgumentParser()
-# Data
-parser.add_argument("--nte", type=int, default=1000, help="Number of test examples.")
-parser.add_argument("--ntr", type=int, default=3000, help="Number of training examples.")
-
-# Task specific hyper parameters
-parser.add_argument("--atomic_nums", type=int, default=2, help="Count of possible atomic numbers.")
-parser.add_argument("--ncg", type=int, default=3, help="Count of coarse grained united atoms.")
-parser.add_argument("--temp", type=float, default=4.0, help="Set initial temperature.")
-parser.add_argument("--tmin", type=float, default=0.2, help="Set minimum temperature.")
-parser.add_argument("--tdr", type=float, default=0.4, help="Temperature decay rate.")
-parser.add_argument("--fm_epoch", type=int, default=400, help="Which epoch should force matching being.")
-parser.add_argument("--fm_co", type=float, default=0.005, help="Coefficient multiplied by force matching loss.")
+parser = cgae_parser()
 parser.add_argument("--scalar_encoder", action='store_true', help="Set the encoder to only deal in scalar values.")
-
-# General hyper parameters
 parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS.keys(), help="Select scalar activation.")
 parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS.keys(), help="Select gate activation.")
 parser.add_argument("--softplus_beta", type=float, default=1.0, help="Which beta for softplus and shifted softplus?")
-parser.add_argument("--bs", type=int, default=32, help="Batch size.")
-parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate.")
 parser.add_argument("--l0", type=int, default=5)
 parser.add_argument("--enc_l0", type=int, default=5, help="l0 multiplicity for the encoder.")
 parser.add_argument("--l1", type=int, default=5)
@@ -44,28 +28,13 @@ parser.add_argument("--l2", type=int, default=5)
 parser.add_argument("--l3", type=int, default=5)
 parser.add_argument("--l4", type=int, default=5)
 parser.add_argument("--l5", type=int, default=5)
-parser.add_argument("--enc_L", type=int, default=3, help="How many layers to create for the encoder.")
-parser.add_argument("--dec_L", type=int, default=1, help="How many layers to create for the decoder.")
 parser.add_argument("--rad_act", type=str, default="relu", choices=ACTS.keys(), help="Select radial activation.")
 parser.add_argument("--rad_nb", type=int, default=20, help="Radial number of bases.")
 parser.add_argument("--rad_maxr", type=float, default=3, help="Max radius.")
 parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
 parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
 parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
-
-# Calculation
 parser.add_argument("-e", "--experiment", action='store_true', help="Run experiment function.")
-parser.add_argument("--cpu", action='store_true', help="Force calculation on cpu.")
-parser.add_argument("--gpu", type=int, default=0, choices=list(range(torch.cuda.device_count())), help="Which gpu?")
-parser.add_argument("--double", action='store_true', help="Calculate using double precision.")
-parser.add_argument("--wall", type=float, default=5 * 60, help="If calc time is too long, break.")
-parser.add_argument("--epochs", type=int, default=800, help="Number of epochs to calculate.")
-
-# Saving
-parser.add_argument("--pickle", type=str, default='out.pkl', help="File for results.")
-parser.add_argument("--save_state", action='store_true', help="Save encoder and decoder state. Default False.")
-
-group = parser.add_mutually_exclusive_group()
 args = parser.parse_args()
 
 # Global variables
@@ -85,21 +54,25 @@ ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
 ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
 
-def load_data(args):
-    otp = md.load("data/otp.pdb")
-    otp_top = otp.top.to_dataframe()[0]
-    otp_element = otp_top['element'].values.tolist()
-    xyz = np.load('data/otp_xyz.npy')
-    force = np.load('data/otp_force.npy')
-    xyz = xyz[-args.ntr:] * 10
-    force = force[-args.ntr:] * 0.0239
-    return xyz, force, otp_element
-
-
 def project_to_ylm(relative_coords, l_max=5, dtype=PRECISION, device=DEVICE):
     sh = spherical_harmonics_xyz(range(l_max + 1), relative_coords, dtype=dtype, device=device)
     rank = len(sh.shape)
     return sh.permute(*range(1, rank), 0)
+
+
+def autoencoder(args):
+    pass
+
+
+def evaluate(f, features, geometry, indicies):
+    with torch.no_grad():
+        outs = []
+        for i in tqdm(range(0, len(indicies), 50), file=sys.stdout):
+            sys.stdout.flush()
+            batch = indicies[i: i + 50]
+            out = f(features[batch], geometry[batch])  # [batch, atom, xyz]
+            outs.append(out)
+        return torch.cat(outs)
 
 
 def execute(args):
@@ -151,7 +124,9 @@ def execute(args):
             cg_xyz = torch.einsum('zij,zik->zjk', cg_assign, geo)
 
             # End goal is projection of atoms by atomic number onto coarse grained atom.
-            # Project every atom onto each CG. Mask by straight-through cg assignment. Split into channels by atomic number.
+            # Project every atom onto each CG.
+            # Mask by straight-through cg assignment.
+            # Split into channels by atomic number.
             relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geo.unsqueeze(2).cpu().detach()
             cg_proj = project_to_ylm(relative_xyz, l_max=args.proj_lmax, dtype=PRECISION,
                                      device=DEVICE)  # B, n_atoms, n_cg, sph
@@ -176,6 +151,7 @@ def execute(args):
             dynamics.append({
                 'loss_ae': loss_ae.item(),
                 'loss_fm': loss_fm.item(),
+                'loss': loss,
                 'epoch': epoch,
                 'step': step,
                 'temp': temp_schedule[epoch],
