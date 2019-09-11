@@ -17,25 +17,34 @@ from cgae.equi import Encoder, Decoder, ACTS
 
 import otp
 
-parser = ArgumentParser(parents=[otp.cgae_parser()])
-parser.add_argument("--scalar_encoder", action='store_true', help="Set the encoder to only deal in scalar values.")
-parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS, help="Select scalar activation.")
-parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS, help="Select gate activation.")
-parser.add_argument("--softplus_beta", type=float, default=1.0, help="Which beta for softplus and shifted softplus?")
-parser.add_argument("--l0", type=int, default=5)
-parser.add_argument("--enc_l0", type=int, default=5, help="l0 multiplicity for the encoder.")
-parser.add_argument("--l1", type=int, default=5)
-parser.add_argument("--l2", type=int, default=5)
-parser.add_argument("--l3", type=int, default=5)
-parser.add_argument("--l4", type=int, default=5)
-parser.add_argument("--l5", type=int, default=5)
-parser.add_argument("--rad_act", type=str, default="relu", choices=ACTS, help="Select radial activation.")
-parser.add_argument("--rad_nb", type=int, default=20, help="Radial number of bases.")
-parser.add_argument("--rad_maxr", type=float, default=3, help="Max radius.")
-parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
-parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
-parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
-parser.add_argument("-e", "--experiment", action='store_true', help="Run experiment function.")
+
+def add_args(parent_parser, add_help):
+    parser = ArgumentParser(parents=[parent_parser], add_help=add_help)
+    parser.add_argument("--scalar_encoder", action='store_true', help="Set the encoder to only deal in scalar values.")
+    parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS, help="Select scalar activation.")
+    parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS, help="Select gate activation.")
+    parser.add_argument("--softplus_beta", type=float, default=1.0,
+                        help="Which beta for softplus and shifted softplus?")
+    parser.add_argument("--l0", type=int, default=5)
+    parser.add_argument("--enc_l0", type=int, default=5, help="l0 multiplicity for the encoder.")
+    parser.add_argument("--l1", type=int, default=5)
+    parser.add_argument("--l2", type=int, default=5)
+    parser.add_argument("--l3", type=int, default=5)
+    parser.add_argument("--l4", type=int, default=5)
+    parser.add_argument("--l5", type=int, default=5)
+    parser.add_argument("--enc_L", type=int, default=1, help="How many layers to create for the encoder.")
+    parser.add_argument("--dec_L", type=int, default=1, help="How many layers to create for the decoder.")
+    parser.add_argument("--rad_act", type=str, default="relu", choices=ACTS, help="Select radial activation.")
+    parser.add_argument("--rad_nb", type=int, default=20, help="Radial number of bases.")
+    parser.add_argument("--rad_maxr", type=float, default=3, help="Max radius.")
+    parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
+    parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
+    parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
+    parser.add_argument("-e", "--experiment", action='store_true', help="Run experiment function.")
+    return parser
+
+
+parser = add_args(otp.cgae_parser(), add_help=True)
 args = otp.parse_args(parser)
 
 ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)

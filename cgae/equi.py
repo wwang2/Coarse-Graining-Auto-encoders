@@ -88,3 +88,8 @@ class Decoder(torch.nn.Module):
         for layer in self.layers:
             output = layer(output.div(geometry.size(1) ** 0.5), geometry)  # Normalization of layers by number of atoms.
         return output
+
+
+class Autoencoder(object):
+    def __init__(self):
+        pass

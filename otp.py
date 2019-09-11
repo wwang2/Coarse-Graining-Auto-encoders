@@ -27,8 +27,6 @@ def cgae_parser():
     # General hyper parameters
     parser.add_argument("--bs", type=int, default=32, help="Batch size.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate.")
-    parser.add_argument("--enc_L", type=int, default=1, help="How many layers to create for the encoder.")
-    parser.add_argument("--dec_L", type=int, default=1, help="How many layers to create for the decoder.")
 
     # Calculation
     parser.add_argument("--cpu", action='store_true', help="Force calculation on cpu.")

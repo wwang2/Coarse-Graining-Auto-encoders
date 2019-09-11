@@ -24,6 +24,8 @@ def execute(args):
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
+    # dynamics = []
+    # wall_start = perf_counter()
     for epoch in tqdm(range(args.epochs)):
         for i, batch in enumerate(xyz):
             batch = torch.Tensor(batch.reshape(-1, n_atom, 3)).to(device)
