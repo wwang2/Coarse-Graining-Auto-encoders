@@ -1,5 +1,12 @@
 import torch
+import torch.nn
+import torch.nn.functional
+import torch.optim
+import torch.utils.data
+
 import argparse
+
+from cgae.cgae import load_data, otp_element_to_onehot
 
 
 def cgae_parser():
@@ -20,7 +27,7 @@ def cgae_parser():
     # General hyper parameters
     parser.add_argument("--bs", type=int, default=32, help="Batch size.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate.")
-    parser.add_argument("--enc_L", type=int, default=3, help="How many layers to create for the encoder.")
+    parser.add_argument("--enc_L", type=int, default=1, help="How many layers to create for the encoder.")
     parser.add_argument("--dec_L", type=int, default=1, help="How many layers to create for the decoder.")
 
     # Calculation
@@ -36,9 +43,39 @@ def cgae_parser():
     return parser
 
 
-def main():
-    pass
+def parse_args(parser):
+    args = parser.parse_args()
+    args.precision = torch.float64 if args.double else torch.float32
+    gpu = torch.cuda.is_available() and not args.cpu
+    args.device = torch.device(f"cuda:{args.gpu}") if gpu else torch.device("cpu")
+    print(f"Calculating on {args.device}.")
+    return args
 
 
-if __name__ == '__main__':
-    main()
+def data(args):
+    geometries, forces, elements = load_data(args.ntr)
+    geometries = torch.from_numpy(geometries).to(device=args.device, dtype=args.precision)
+    forces = torch.from_numpy(forces).to(device=args.device, dtype=args.precision)
+    features = torch.tensor(list(map(lambda x: otp_element_to_onehot()[x], elements)),
+                            device=args.device, dtype=args.precision)
+    features = features.expand(geometries.size(0), -1, -1)
+    return geometries, forces, features
+
+
+def neural_network(encoder, decoder, args):
+    encoder = encoder(args).to(device=args.device)
+    decoder = decoder(args).to(device=args.device)
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
+    return encoder, decoder, criterion, optimizer
+
+
+def batch(geometries, forces, features, args):
+    n_atoms = geometries.size(1)
+    n_features = features.size(-1)
+    n_batches = int(geometries.shape[0] // args.bs)
+    n_samples = n_batches * args.bs
+    geometries = geometries[:n_samples].reshape(n_batches, args.bs, n_atoms, 3)
+    forces = forces[:n_samples].reshape(n_batches, args.bs, n_atoms, 3)
+    features = features[:n_samples].reshape(n_batches, args.bs, n_atoms, n_features)
+    return n_batches, geometries, forces, features

@@ -4,7 +4,6 @@ import torch.nn.functional
 import torch.optim
 import torch.utils.data
 
-import numpy as np
 from time import perf_counter
 from tqdm import tqdm
 from argparse import ArgumentParser
@@ -13,11 +12,12 @@ from se3cnn.non_linearities import rescaled_act
 from se3cnn.SO3 import spherical_harmonics_xyz
 
 from cgae.gs import gumbel_softmax
+from cgae.cgae import temp_scheduler
 from cgae.equi import Encoder, Decoder, ACTS
-from cgae.arguments import cgae_parser
-from cgae.data import load_data
 
-parser = ArgumentParser(parents=[cgae_parser()])
+import otp
+
+parser = ArgumentParser(parents=[otp.cgae_parser()])
 parser.add_argument("--scalar_encoder", action='store_true', help="Set the encoder to only deal in scalar values.")
 parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS, help="Select scalar activation.")
 parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS, help="Select gate activation.")
@@ -36,10 +36,7 @@ parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight
 parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
 parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
 parser.add_argument("-e", "--experiment", action='store_true', help="Run experiment function.")
-args = parser.parse_args()
-args.precision = torch.float64 if args.double else torch.float32
-args.device = torch.device(f"cuda:{args.gpu}") if torch.cuda.is_available() and not args.cpu else torch.device("cpu")
-print(f"Calculating on {args.device}.")
+args = otp.parse_args(parser)
 
 ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
 ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
@@ -67,38 +64,14 @@ def project_to_ylm(relative_coords, l_max=5, dtype=None, device=None):
 
 
 def execute(args):
-    # Data
-    atomic_num_to_onehot = {'H': [1, 0], 'C': [0, 1]}
-    geometries, forces, atomic_nums = load_data(args)
-    geometries = torch.from_numpy(geometries).to(device=args.device, dtype=args.precision)
-    forces = torch.from_numpy(forces).to(device=args.device, dtype=args.precision)
-    features = torch.tensor(list(map(lambda x: atomic_num_to_onehot[x], atomic_nums)),
-                            device=args.device, dtype=args.precision)
-    features = features.expand(geometries.size(0), -1, -1)
+    geometries, forces, features = otp.data(args)
 
     cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
     cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
-    # Neural Network
-    encoder = Encoder(args).to(device=args.device)
-    decoder = Decoder(args).to(device=args.device)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
-
-    # Temperature scheduler
-    temp_schedule = np.linspace(0, args.epochs, args.epochs)
-    decay_epoch = int(args.epochs * args.tdr)
-    temp_schedule = args.temp * np.exp(-temp_schedule / decay_epoch) + args.tmin
-    temp_schedule = torch.from_numpy(temp_schedule).to(device=args.device)
-
-    # Forward
-    n_atoms = geometries.size(1)
-    n_features = features.size(-1)
-    n_batches = int(geometries.shape[0] // args.bs)
-    n_samples = n_batches * args.bs
-    geometries = geometries[:n_samples].reshape(n_batches, args.bs, n_atoms, 3)
-    forces = forces[:n_samples].reshape(n_batches, args.bs, n_atoms, 3)
-    features = features[:n_samples].reshape(n_batches, args.bs, n_atoms, n_features)
+    encoder, decoder, criterion, optimizer = otp.neural_network(Encoder, Decoder, args)
+    temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
+    n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
     dynamics = []
     wall_start = perf_counter()
@@ -112,8 +85,10 @@ def execute(args):
 
             # Auto encoder
             logits = encoder(feat, geo)
-            cg_assign, st_cg_assign = gumbel_softmax(logits, temp_schedule[epoch])
-            cg_xyz = torch.einsum('zij,zik->zjk', cg_assign, geo)
+            # TODO make this reflect wujie's work. .t() .t() / .sum(1) != what you have here.
+            cg_assign, st_cg_assign = gumbel_softmax(logits, temp_sched[epoch], dim=1)
+            E = cg_assign / cg_assign.sum(1).unsqueeze(1)
+            cg_xyz = torch.einsum('zij,zik->zjk', E, geo)
 
             # End goal is projection of atoms by atomic number onto coarse grained atom.
             # Project every atom onto each CG.
@@ -131,7 +106,7 @@ def execute(args):
             loss_ae = criterion(cg_proj, pred_sph)
 
             # Force matching
-            cg_force_assign, _ = gumbel_softmax(logits, temp_schedule[epoch] * 0.7,
+            cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * 0.7,
                                                 device=args.device, dtype=args.precision)
             cg_force = torch.einsum('zij,zik->zjk', cg_force_assign, force)
             loss_fm = cg_force.pow(2).sum(2).mean()
@@ -147,7 +122,7 @@ def execute(args):
                 'loss': loss,
                 'epoch': epoch,
                 'step': step,
-                'temp': temp_schedule[epoch],
+                'temp': temp_sched[epoch],
             })
 
             optimizer.zero_grad()
