@@ -40,6 +40,9 @@ def add_args(parent_parser, add_help):
     parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
     parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
     parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
+    parser.add_argument("--gumble_sm_proj", action='store_true',
+                        help="For the target projection, use a gumble softmax sample instead of a straight-through "
+                             "gumble softmax sample.")
     return parser
 
 
@@ -69,6 +72,17 @@ def project_to_ylm(relative_coords, l_max=5, dtype=None, device=None):
 #             out = f(features[batch], geometry[batch])  # [batch, atom, xyz]
 #             outs.append(out)
 #         return torch.cat(outs)
+
+
+def project_onto_cg(r, assignment, feature_mask, args):
+    # Project every atom onto each CG.
+    # Mask by straight-through cg assignment.
+    # Split into channels by atomic number.
+    cg_proj = project_to_ylm(r, l_max=args.proj_lmax, dtype=args.precision, device=args.device)  # B, n_atoms, n_cg, sph
+    cg_proj = assignment.unsqueeze(-1) * cg_proj  # B, n_atoms, n_cg, sph
+    cg_proj = cg_proj[..., None, :] * feature_mask[..., None, :, None]  # B, n_atoms, n_cg, atomic_numbers, sph
+    cg_proj = cg_proj.sum(1)  # B, n_cg, atomic_numbers, sph
+    return cg_proj
 
 
 def execute(args):
@@ -102,15 +116,11 @@ def execute(args):
             cg_xyz = torch.einsum('zij,zik->zjk', E, geo)
 
             # End goal is projection of atoms by atomic number onto coarse grained atom.
-            # Project every atom onto each CG.
-            # Mask by straight-through cg assignment.
-            # Split into channels by atomic number.
             relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geo.unsqueeze(2).cpu().detach()
-            cg_proj = project_to_ylm(relative_xyz, l_max=args.proj_lmax, dtype=args.precision,
-                                     device=args.device)  # B, n_atoms, n_cg, sph
-            cg_proj = st_cg_assign.unsqueeze(-1) * cg_proj  # B, n_atoms, n_cg, sph
-            cg_proj = cg_proj[..., None, :] * feat[..., None, :, None]  # B, n_atoms, n_cg, atomic_numbers, sph
-            cg_proj = cg_proj.sum(1)  # B, n_cg, atomic_numbers, sph
+            if args.gumble_sm_proj:
+                cg_proj = project_onto_cg(relative_xyz, cg_assign, feat, args)
+            else:
+                cg_proj = project_onto_cg(relative_xyz, st_cg_assign, feat, args)
 
             pred_sph = decoder(cg_features, cg_xyz.clone().detach())
             cg_proj = cg_proj.reshape_as(pred_sph)
@@ -137,7 +147,8 @@ def execute(args):
                 'gumble': gumbel_softmax(logits, temp_sched[epoch], device=args.device),
                 'batch': batch.item(),
                 'cg_xyz': cg_xyz,
-                'pred_sph': pred_sph
+                'pred_sph': pred_sph,
+                'sph': cg_proj,
             })
 
             optimizer.zero_grad()
