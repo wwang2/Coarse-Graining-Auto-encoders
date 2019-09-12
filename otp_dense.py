@@ -24,7 +24,6 @@ def execute(args):
 
     encoder = Encoder(in_dim=geometries.size(1), out_dim=args.ncg, hard=False, device=args.device).to(args.device)
     decoder = Decoder(in_dim=args.ncg, out_dim=geometries.size(1)).to(args.device)
-    criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
@@ -42,7 +41,7 @@ def execute(args):
             cg_xyz = encoder(geo, temp_sched[epoch])
             CG = gumbel_softmax(encoder.weight1.t(), temp_sched[epoch] * 0.7, device=args.device).t()
             decoded = decoder(cg_xyz)
-            loss_ae = criterion(decoded, geo)
+            loss_ae = (decoded - geo).pow(2).sum(-1).mean()
 
             f = torch.matmul(CG, force)
             loss_fm = f.pow(2).sum(2).mean()

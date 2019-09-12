@@ -22,7 +22,7 @@ def cgae_parser():
     parser.add_argument("--tmin", type=float, default=0.2, help="Set minimum temperature.")
     parser.add_argument("--tdr", type=float, default=0.4, help="Temperature decay rate.")
     parser.add_argument("--fm_epoch", type=int, default=400, help="Which epoch should force matching being.")
-    parser.add_argument("--fm_co", type=float, default=0.005, help="Coefficient multiplied by force matching loss.")
+    parser.add_argument("--fm_co", type=float, default=1.0, help="Coefficient multiplied by force matching loss.")
 
     # General hyper parameters
     parser.add_argument("--bs", type=int, default=32, help="Batch size.")

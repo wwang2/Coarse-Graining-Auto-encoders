@@ -40,7 +40,6 @@ def add_args(parent_parser, add_help):
     parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
     parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
     parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
-    parser.add_argument("-e", "--experiment", action='store_true', help="Run experiment function.")
     return parser
 
 
@@ -80,7 +79,6 @@ def execute(args):
 
     encoder = Encoder(args).to(device=args.device)
     decoder = Decoder(args).to(device=args.device)
-    criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
@@ -116,7 +114,7 @@ def execute(args):
 
             pred_sph = decoder(cg_features, cg_xyz.clone().detach())
             cg_proj = cg_proj.reshape_as(pred_sph)
-            loss_ae = criterion(cg_proj, pred_sph)
+            loss_ae = (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
 
             # Force matching
             cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * 0.7,
@@ -162,62 +160,6 @@ def execute(args):
     }
 
 
-def experiment():
-    print("Experimenting...")
-
-    # Data
-    num_atoms = 32
-    rands = torch.randint(args.atomic_nums, (args.bs, num_atoms, 1), dtype=torch.long, device=args.device)
-    features = torch.zeros(args.bs, num_atoms, args.atomic_nums, dtype=args.precision, device=args.device)
-    features.scatter_(-1, rands, 1.0)
-    geometries = torch.randn(args.bs, num_atoms, 3, dtype=args.precision, device=args.device)
-
-    # h2o = torch.tensor([[0.0000, 0.0000, 0.0000],
-    #                     [0.7586, 0.0000, 0.5043],
-    #                     [0.7586, 0.0000, -0.5043]], dtype=args.precision, device=args.device)
-    # feat = torch.tensor([[1, 0],
-    #                      [0, 1],
-    #                      [0, 1]], dtype=args.precision, device=args.device)
-    # geometries = torch.cat([h2o, h2o + torch.ones(3)]).unsqueeze(0)
-    # features = torch.cat([feat, feat]).unsqueeze(0)
-
-    cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
-    cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
-
-    # Neural Network
-    encoder = Encoder(args).to(args.device)
-    decoder = Decoder(args).to(args.device)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
-
-    # Forward
-    losses = []
-    for _ in tqdm(range(100)):
-        logits = encoder(features, geometries)
-        cg_assign, st_cg_assign = gumbel_softmax(logits, 4.0)
-        cg_xyz = torch.einsum('zij,zik->zjk', cg_assign, geometries)
-
-        # End goal is projection of atoms by atomic number onto coarse grained atom.
-        # Project every atom onto each CG. Mask by straight-through cg assignment. Split into channels by atomic number.
-        relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geometries.unsqueeze(2).cpu().detach()
-        cg_proj = project_to_ylm(relative_xyz, l_max=args.proj_lmax, dtype=args.precision, device=args.device)  # B, n_atoms, n_cg, sph
-        cg_proj = st_cg_assign.unsqueeze(-1) * cg_proj  # B, n_atoms, n_cg, sph
-        cg_proj = cg_proj[..., None, :] * features[..., None, :, None]  # B, n_atoms, n_cg, atomic_numbers, sph
-        cg_proj = cg_proj.sum(1)  # B, n_cg, atomic_numbers, sph
-
-        pred_sph = decoder(cg_features, cg_xyz.clone().detach())
-        cg_proj = cg_proj.reshape_as(pred_sph)
-
-        loss = criterion(cg_proj, pred_sph)
-        losses.append(loss)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-    print('Done experimenting.')
-
-
 def main():
     results = execute(args)
     with open(args.pickle, 'wb') as f:
@@ -225,6 +167,4 @@ def main():
 
 
 if __name__ == '__main__':
-    if args.experiment:
-        experiment()
     main()
