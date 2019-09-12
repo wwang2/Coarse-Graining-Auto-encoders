@@ -60,14 +60,6 @@ def data(args):
     return geometries, forces, features
 
 
-def neural_network(encoder, decoder, args):
-    encoder = encoder(args).to(device=args.device)
-    decoder = decoder(args).to(device=args.device)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
-    return encoder, decoder, criterion, optimizer
-
-
 def batch(geometries, forces, features, args):
     n_atoms = geometries.size(1)
     n_features = features.size(-1)

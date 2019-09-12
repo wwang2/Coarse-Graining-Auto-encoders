@@ -78,7 +78,10 @@ def execute(args):
     cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
     cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
-    encoder, decoder, criterion, optimizer = otp.neural_network(Encoder, Decoder, args)
+    encoder = Encoder(args).to(device=args.device)
+    decoder = Decoder(args).to(device=args.device)
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
@@ -94,7 +97,6 @@ def execute(args):
 
             # Auto encoder
             logits = encoder(feat, geo)
-            # TODO make this reflect wujie's work. .t() .t() / .sum(1) != what you have here.
             cg_assign, st_cg_assign = gumbel_softmax(logits, temp_sched[epoch], dim=1)
             E = cg_assign / cg_assign.sum(1).unsqueeze(1)
             cg_xyz = torch.einsum('zij,zik->zjk', E, geo)

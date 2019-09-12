@@ -4,10 +4,11 @@ import torch.nn.functional
 import torch.optim
 import torch.utils.data
 
-from argparse import ArgumentParser
+from time import perf_counter
 from tqdm import tqdm
+from argparse import ArgumentParser
 
-from cgae.utils import write_traj, save_traj
+# from cgae.utils import write_traj, save_traj
 from cgae.cgae_dense import gumbel_softmax, Encoder, Decoder
 from cgae.cgae import temp_scheduler
 
@@ -20,26 +21,30 @@ args = otp.parse_args(parser)
 def execute(args):
     # Data
     geometries, forces, features = otp.data(args)
-    encoder, decoder, criterion, optimizer = otp.neural_network(Encoder, Decoder, args)
+
+    encoder = Encoder(in_dim=geometries.size(1), out_dim=args.ncg, hard=False, device=args.device).to(args.device)
+    decoder = Decoder(in_dim=args.ncg, out_dim=geometries.size(1)).to(args.device)
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
-    # dynamics = []
-    # wall_start = perf_counter()
+    dynamics = []
+    wall_start = perf_counter()
     for epoch in tqdm(range(args.epochs)):
-        for i, batch in enumerate(xyz):
-            batch = torch.Tensor(batch.reshape(-1, n_atom, 3)).to(device)
-            cg_xyz = encoder(batch, t_sched[epoch])
-            CG = gumbel_softmax(encoder.weight1.t(), t_sched[epoch] * 0.7, device=device).t()
+        for step, batch in tqdm(enumerate(torch.randperm(n_batches, device=args.device))):
+            wall = perf_counter() - wall_start
+            if wall > args.wall:
+                break
 
+            _, geo, force = features[batch], geometries[batch], forces[batch]
+            cg_xyz = encoder(geo, temp_sched[epoch])
+            CG = gumbel_softmax(encoder.weight1.t(), temp_sched[epoch] * 0.7, device=args.device).t()
             decoded = decoder(cg_xyz)
-            loss_ae = criterion(decoded, batch)
+            loss_ae = criterion(decoded, geo)
 
-            f0 = torch.Tensor(force[i].reshape(-1, n_atom, 3)).to(device)
-            f = torch.matmul(CG, f0)
-            mean_force = f.pow(2).sum(2).mean()
-
-            loss_fm = mean_force
+            f = torch.matmul(CG, force)
+            loss_fm = f.pow(2).sum(2).mean()
 
             if epoch >= args.fm_epoch:
                 loss = loss_ae + args.fm_co * loss_fm
@@ -50,13 +55,14 @@ def execute(args):
             loss.backward()
             optimizer.step()
 
-            loss_epoch += loss.item()
-            loss_ae_epoch += loss_ae.item()
-            loss_fm_epoch += loss_fm.item()
-
-        loss_epoch = loss_epoch / xyz.shape[0]
-        loss_ae_epoch = loss_ae_epoch / xyz.shape[0]
-        loss_fm_epoch = loss_fm_epoch / xyz.shape[0]
+            dynamics.append({
+                'loss_ae': loss_ae.item(),
+                'loss_fm': loss_fm.item(),
+                'loss': loss,
+                'epoch': epoch,
+                'step': step,
+                'temp': temp_sched[epoch],
+            })
 
     return {
         'args': args,
