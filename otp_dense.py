@@ -59,11 +59,12 @@ def execute(args):
             dynamics.append({
                 'loss_ae': loss_ae.item(),
                 'loss_fm': loss_fm.item(),
-                'loss': loss,
+                'loss': loss.item(),
                 'epoch': epoch,
                 'step': step,
-                'temp': temp_sched[epoch],
-                'gumble': gumbel_softmax(encoder.weight1.t(), temp_sched[epoch], device='cpu'),
+                'temp': temp_sched[epoch].item(),
+                'gumble': gumbel_softmax(encoder.weight1.t(), temp_sched[epoch], device=args.device),
+                'batch': batch.item(),
                 'cg_xyz': cg_xyz
             })
 
