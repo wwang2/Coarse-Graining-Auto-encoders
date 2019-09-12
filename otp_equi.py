@@ -87,6 +87,7 @@ def execute(args):
 
     dynamics = []
     wall_start = perf_counter()
+    torch.manual_seed(args.seed)
     for epoch in tqdm(range(args.epochs)):
         for step, batch in tqdm(enumerate(torch.randperm(n_batches, device=args.device))):
             wall = perf_counter() - wall_start
@@ -134,6 +135,8 @@ def execute(args):
                 'epoch': epoch,
                 'step': step,
                 'temp': temp_sched[epoch],
+                'gumble': gumbel_softmax(logits, temp_sched[epoch], device='cpu'),
+                'cg_xyz': cg_xyz
             })
 
             optimizer.zero_grad()

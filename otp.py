@@ -34,6 +34,7 @@ def cgae_parser():
     parser.add_argument("--double", action='store_true', help="Calculate using double precision.")
     parser.add_argument("--wall", type=float, default=5 * 60, help="If calc time is too long, break.")
     parser.add_argument("--epochs", type=int, default=800, help="Number of epochs to calculate.")
+    parser.add_argument("--seed", type=int, default=42, help="Set seed before batching.")
 
     # Saving
     parser.add_argument("--pickle", type=str, default='out.pkl', help="File for results.")
