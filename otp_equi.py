@@ -110,7 +110,7 @@ def execute(args):
 
             # Auto encoder
             logits = encoder(feat, geo)
-            cg_assign, st_cg_assign = gumbel_softmax(logits, temp_sched[epoch], dim=1,
+            cg_assign, st_cg_assign = gumbel_softmax(logits, temp_sched[epoch],
                                                      dtype=args.precision, device=args.device)
             E = cg_assign / cg_assign.sum(1).unsqueeze(1)
             cg_xyz = torch.einsum('zij,zik->zjk', E, geo)
@@ -144,7 +144,8 @@ def execute(args):
                 'epoch': epoch,
                 'step': step,
                 'temp': temp_sched[epoch].item(),
-                'gumble': gumbel_softmax(logits, temp_sched[epoch], device=args.device),
+                'gumble': cg_assign,
+                'st_gumble': st_cg_assign,
                 'batch': batch.item(),
                 'cg_xyz': cg_xyz,
                 'pred_sph': pred_sph,
