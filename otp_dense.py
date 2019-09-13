@@ -33,10 +33,6 @@ def execute(args):
     torch.manual_seed(args.seed)
     for epoch in tqdm(range(args.epochs)):
         for step, batch in tqdm(enumerate(torch.randperm(n_batches, device=args.device))):
-            wall = perf_counter() - wall_start
-            if wall > args.wall:
-                break
-
             _, geo, force = features[batch], geometries[batch], forces[batch]
             cg_xyz = encoder(geo, temp_sched[epoch])
             CG = gumbel_softmax(encoder.weight1.t(), temp_sched[epoch] * 0.7, device=args.device).t()
@@ -66,6 +62,10 @@ def execute(args):
                 'batch': batch.item(),
                 'cg_xyz': cg_xyz
             })
+
+        wall = perf_counter() - wall_start
+        if wall > args.wall:
+            break
 
     return {
         'args': args,

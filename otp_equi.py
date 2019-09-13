@@ -103,10 +103,6 @@ def execute(args):
     torch.manual_seed(args.seed)
     for epoch in tqdm(range(args.epochs)):
         for step, batch in tqdm(enumerate(torch.randperm(n_batches, device=args.device))):
-            wall = perf_counter() - wall_start
-            if wall > args.wall:
-                break
-
             feat, geo, force = features[batch], geometries[batch], forces[batch]
 
             # Auto encoder
@@ -150,6 +146,11 @@ def execute(args):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+        wall = perf_counter() - wall_start
+        if wall > args.wall:
+            break
+            
         summaries.append({
             'loss_ae': loss_ae.item(),
             'loss_fm': loss_fm.item(),
