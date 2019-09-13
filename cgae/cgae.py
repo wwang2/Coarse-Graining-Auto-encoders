@@ -6,9 +6,14 @@ import numpy as np
 
 
 def temp_scheduler(epochs, decay_rate, t0, tmin, dtype=None, device=None):
-    schedule = np.linspace(0, epochs, epochs)
-    decay_epoch = int(epochs * decay_rate)
-    schedule = t0 * np.exp(-schedule / decay_epoch) + tmin
+    if decay_rate is None:
+        schedule = np.linspace(0, epochs, epochs)
+        decay_rate = (np.log(t0) - np.log(tmin))/epochs
+        schedule = t0 * np.exp(-schedule * decay_rate)
+    else:
+        schedule = np.linspace(0, epochs, epochs)
+        decay_epoch = int(epochs * decay_rate)
+        schedule = t0 * np.exp(-schedule / decay_epoch) + tmin
     return torch.from_numpy(schedule).to(dtype=dtype, device=device)
 
 

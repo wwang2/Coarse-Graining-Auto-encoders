@@ -150,7 +150,7 @@ def execute(args):
         wall = perf_counter() - wall_start
         if wall > args.wall:
             break
-            
+
         summaries.append({
             'loss_ae': loss_ae.item(),
             'loss_fm': loss_fm.item(),
