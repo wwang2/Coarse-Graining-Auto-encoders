@@ -37,11 +37,11 @@ class Encoder(torch.nn.Module):
         K = partial(Kernel, RadialModel=radial_model)
         C = partial(Convolution, K)
 
-        if args.scalar_encoder:
-            Rs = [(args.enc_l0, 0)]
+        if args.high_l_encoder:
+            Rs = [(args.enc_l0, 0), (args.l1, 1), (args.l2, 2), (args.l3, 3), (args.l4, 4), (args.l5, 5)]
             Rs = [[(args.atomic_nums, 0)]] + [Rs] * args.enc_L + [[(args.ncg, 0)]]
         else:
-            Rs = [(args.enc_l0, 0), (args.l1, 1), (args.l2, 2), (args.l3, 3), (args.l4, 4), (args.l5, 5)]
+            Rs = [(args.enc_l0, 0)]
             Rs = [[(args.atomic_nums, 0)]] + [Rs] * args.enc_L + [[(args.ncg, 0)]]
 
         self.layers = torch.nn.ModuleList(
