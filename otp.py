@@ -27,6 +27,8 @@ def cgae_parser():
     # General hyper parameters
     parser.add_argument("--bs", type=int, default=32, help="Batch size.")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate.")
+    parser.add_argument("--force_temp_coeff", type=float, default=0.7, help="Gumble is sampled at a diff temp for "
+                                                                            "forces. This is that coefficient.")
 
     # Calculation
     parser.add_argument("--cpu", action='store_true', help="Force calculation on cpu.")

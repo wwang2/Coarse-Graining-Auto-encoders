@@ -124,10 +124,10 @@ def execute(args):
             loss_ae = (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
 
             # Force matching
-            cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * 0.7,
+            cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * args.force_temp_coeff,
                                                 device=args.device, dtype=args.precision)
             cg_force = torch.einsum('zij,zik->zjk', cg_force_assign, force)
-            loss_fm = cg_force.pow(2).sum(2).mean()
+            loss_fm = cg_force.pow(2).sum(-1).mean()
 
             if epoch >= args.fm_epoch:
                 loss = loss_ae + args.fm_co * loss_fm

@@ -6,51 +6,61 @@ import torch.utils.data
 
 from time import perf_counter
 from tqdm import tqdm
-from argparse import ArgumentParser
 
-# from cgae.utils import write_traj, save_traj
-from cgae.cgae_dense import gumbel_softmax, Encoder, Decoder
+from se3cnn.non_linearities import rescaled_act
+
+from cgae.gs import gumbel_softmax
 from cgae.cgae import temp_scheduler
+from cgae.equi import Encoder, ACTS
+from cgae.cgae_dense import Decoder
 
 import otp
+import otp_equi
 
-parser = ArgumentParser(parents=[otp.cgae_parser()])
+
+parser = otp_equi.add_args(otp.cgae_parser(), add_help=True)
 args = otp.parse_args(parser)
+
+ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
+ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
 
 def execute(args):
-    # Data
     geometries, forces, features = otp.data(args)
 
-    encoder = Encoder(in_dim=geometries.size(1), out_dim=args.ncg, hard=False, device=args.device).to(args.device)
+    encoder = Encoder(args).to(device=args.device)
     decoder = Decoder(in_dim=args.ncg, out_dim=geometries.size(1)).to(args.device)
     optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
     dynamics = []
+    summaries = []
     wall_start = perf_counter()
     torch.manual_seed(args.seed)
     for epoch in tqdm(range(args.epochs)):
         for step, batch in tqdm(enumerate(torch.randperm(n_batches, device=args.device))):
-            _, geo, force = features[batch], geometries[batch], forces[batch]
-            cg_xyz = encoder(geo, temp_sched[epoch])
+            feat, geo, force = features[batch], geometries[batch], forces[batch]
+
+            # Auto encoder
+            logits = encoder(feat, geo)
+            cg_assign, st_cg_assign = gumbel_softmax(logits, temp_sched[epoch],
+                                                     dtype=args.precision, device=args.device)
+            E = cg_assign / cg_assign.sum(1).unsqueeze(1)
+            cg_xyz = torch.einsum('zij,zik->zjk', E, geo)
             decoded = decoder(cg_xyz)
             loss_ae = (decoded - geo).pow(2).sum(-1).mean()
 
-            cg_force_assign = gumbel_softmax(encoder.weight1.t(), temp_sched[epoch] * args.force_temp_coeff,
-                                             device=args.device).t()
-            f = torch.matmul(cg_force_assign, force)
-            loss_fm = f.pow(2).sum(-1).mean()
+            # Force matching
+            cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * args.force_temp_coeff,
+                                                device=args.device, dtype=args.precision)
+            cg_force = torch.einsum('zij,zik->zjk', cg_force_assign, force)
+            loss_fm = cg_force.pow(2).sum(-1).mean()
 
             if epoch >= args.fm_epoch:
                 loss = loss_ae + args.fm_co * loss_fm
             else:
                 loss = loss_ae
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
 
             dynamics.append({
                 'loss_ae': loss_ae.item(),
@@ -58,19 +68,34 @@ def execute(args):
                 'loss': loss.item(),
                 'epoch': epoch,
                 'step': step,
-                'temp': temp_sched[epoch].item(),
-                'gumble': gumbel_softmax(encoder.weight1.t(), temp_sched[epoch], device=args.device),
                 'batch': batch.item(),
-                'cg_xyz': cg_xyz
             })
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
         wall = perf_counter() - wall_start
         if wall > args.wall:
             break
 
+        summaries.append({
+            'loss_ae': loss_ae.item(),
+            'loss_fm': loss_fm.item(),
+            'loss': loss.item(),
+            'epoch': epoch,
+            'step': step,
+            'batch': batch.item(),
+            'cg_xyz': cg_xyz,
+            'temp': temp_sched[epoch].item(),
+            'gumble': cg_assign,
+            'st_gumble': st_cg_assign,
+        })
+
     return {
         'args': args,
         'dynamics': dynamics,
+        'summaries': summaries,
         # 'train': {
         #     'pred': evaluate(f, features, geometry, train[:len(test)]),
         #     'true': forces[train[:len(test)]],
