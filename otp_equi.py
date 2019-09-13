@@ -20,7 +20,7 @@ import otp
 
 def add_args(parent_parser, add_help):
     parser = ArgumentParser(parents=[parent_parser], add_help=add_help)
-    parser.add_argument("--high_l_encoder", action='store_true', help="Set the encoder to only deal in scalar values.")
+    parser.add_argument("--high_l_encoder", action='store_true', help="Set the encoder to include high order sph.")
     parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS, help="Select scalar activation.")
     parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS, help="Select gate activation.")
     parser.add_argument("--softplus_beta", type=float, default=1.0,
