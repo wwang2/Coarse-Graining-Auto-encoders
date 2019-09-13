@@ -98,6 +98,7 @@ def execute(args):
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
     dynamics = []
+    summaries = []
     wall_start = perf_counter()
     torch.manual_seed(args.seed)
     for epoch in tqdm(range(args.epochs)):
@@ -143,22 +144,31 @@ def execute(args):
                 'loss': loss.item(),
                 'epoch': epoch,
                 'step': step,
-                'temp': temp_sched[epoch].item(),
-                'gumble': cg_assign,
-                'st_gumble': st_cg_assign,
                 'batch': batch.item(),
-                'cg_xyz': cg_xyz,
-                'pred_sph': pred_sph,
-                'sph': cg_proj,
             })
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+        summaries.append({
+            'loss_ae': loss_ae.item(),
+            'loss_fm': loss_fm.item(),
+            'loss': loss.item(),
+            'epoch': epoch,
+            'step': step,
+            'batch': batch.item(),
+            'cg_xyz': cg_xyz,
+            'pred_sph': pred_sph,
+            'sph': cg_proj,
+            'temp': temp_sched[epoch].item(),
+            'gumble': cg_assign,
+            'st_gumble': st_cg_assign,
+        })
 
     return {
         'args': args,
         'dynamics': dynamics,
+        'summaries': summaries,
         # 'train': {
         #     'pred': evaluate(f, features, geometry, train[:len(test)]),
         #     'true': forces[train[:len(test)]],
