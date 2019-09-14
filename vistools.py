@@ -36,3 +36,20 @@ def assignment_to_color(onehot, color_map):
     colors = np.array([color_map[i.item()] for i in argmax])
     colors = colors.reshape(*save_size[:-1], -1)
     return colors
+
+
+def trace_pts(ar1, color='red', opacity=1.0):
+    x, y, z = ar1.T
+    
+    trace = go.Scatter3d(
+        x=x,
+        y=y,
+        z=z,
+        mode='markers',
+        marker=dict(
+            size=8,
+            opacity=opacity,
+            color=color
+        )
+    )
+    return trace
