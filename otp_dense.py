@@ -29,6 +29,7 @@ def execute(args):
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
 
     dynamics = []
+    summaries = []
     wall_start = perf_counter()
     torch.manual_seed(args.seed)
     for epoch in tqdm(range(args.epochs)):
@@ -58,19 +59,31 @@ def execute(args):
                 'loss': loss.item(),
                 'epoch': epoch,
                 'step': step,
-                'temp': temp_sched[epoch].item(),
-                'gumble': gumbel_softmax(encoder.weight1.t(), temp_sched[epoch], device=args.device),
                 'batch': batch.item(),
-                'cg_xyz': cg_xyz
             })
 
         wall = perf_counter() - wall_start
         if wall > args.wall:
             break
 
+        summaries.append({
+            'loss_ae': loss_ae.item(),
+            'loss_fm': loss_fm.item(),
+            'loss': loss.item(),
+            'epoch': epoch,
+            'step': step,
+            'batch': batch.item(),
+            'cg_xyz': cg_xyz,
+            'temp': temp_sched[epoch].item(),
+            'gumble': gumbel_softmax(encoder.weight1.t(), temp_sched[epoch], device=args.device),
+            'st_gumble': gumbel_softmax(encoder.weight1.t(), temp_sched[epoch], device=args.device, hard=True),
+            'reconstructed': decoded,
+        })
+
     return {
         'args': args,
         'dynamics': dynamics,
+        'summaries': summaries,
         # 'train': {
         #     'pred': evaluate(f, features, geometry, train[:len(test)]),
         #     'true': forces[train[:len(test)]],

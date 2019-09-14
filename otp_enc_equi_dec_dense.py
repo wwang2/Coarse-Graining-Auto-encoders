@@ -90,6 +90,7 @@ def execute(args):
             'temp': temp_sched[epoch].item(),
             'gumble': cg_assign,
             'st_gumble': st_cg_assign,
+            'reconstructed': decoded,
         })
 
     return {
