@@ -100,6 +100,8 @@ def execute(args):
             'step': step,
             'batch': batch.item(),
             'cg_xyz': cg_xyz,
+            'pred_sph': pred_sph,
+            'sph': cg_proj,
             'temp': temp_sched[epoch].item(),
             'gumble': cg_assign,
             'st_gumble': st_cg_assign,
