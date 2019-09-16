@@ -51,15 +51,15 @@ def execute(args):
             decoded = decoder(cg_xyz)
             loss_ae = (decoded - geo).pow(2).sum(-1).mean()
 
-            # Force matching
-            cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * args.force_temp_coeff,
-                                                device=args.device, dtype=args.precision)
-            cg_force = torch.einsum('zij,zik->zjk', cg_force_assign, force)
-            loss_fm = cg_force.pow(2).sum(-1).mean()
-
-            if epoch >= args.fm_epoch:
+            if args.fm and epoch >= args.fm_epoch:
+                # Force matching
+                cg_force_assign, _ = gumbel_softmax(logits, temp_sched[epoch] * args.force_temp_coeff,
+                                                    device=args.device, dtype=args.precision)
+                cg_force = torch.einsum('zij,zik->zjk', cg_force_assign, force)
+                loss_fm = cg_force.pow(2).sum(-1).mean()
                 loss = loss_ae + args.fm_co * loss_fm
             else:
+                loss_fm = torch.tensor(0)
                 loss = loss_ae
 
             dynamics.append({

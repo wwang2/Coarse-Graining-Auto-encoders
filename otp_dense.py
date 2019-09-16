@@ -39,14 +39,15 @@ def execute(args):
             decoded = decoder(cg_xyz)
             loss_ae = (decoded - geo).pow(2).sum(-1).mean()
 
-            cg_force_assign = gumbel_softmax(encoder.weight1.t(), temp_sched[epoch] * args.force_temp_coeff,
-                                             device=args.device).t()
-            f = torch.matmul(cg_force_assign, force)
-            loss_fm = f.pow(2).sum(-1).mean()
+            if args.fm and epoch >= args.fm_epoch:
+                cg_force_assign = gumbel_softmax(encoder.weight1.t(), temp_sched[epoch] * args.force_temp_coeff,
+                                                 device=args.device).t()
+                f = torch.matmul(cg_force_assign, force)
+                loss_fm = f.pow(2).sum(-1).mean()
 
-            if epoch >= args.fm_epoch:
                 loss = loss_ae + args.fm_co * loss_fm
             else:
+                loss_fm = torch.tensor(0)
                 loss = loss_ae
 
             optimizer.zero_grad()
