@@ -40,7 +40,7 @@ def assignment_to_color(onehot, color_map):
 
 def trace_pts(ar1, color='red', opacity=1.0):
     x, y, z = ar1.T
-    
+
     trace = go.Scatter3d(
         x=x,
         y=y,
