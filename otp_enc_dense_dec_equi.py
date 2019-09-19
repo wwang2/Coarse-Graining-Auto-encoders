@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 
 from cgae.gs import gumbel_softmax
 from cgae.cgae import temp_scheduler
-from cgae.equi import Decoder
+from cgae.equi import Decoder, nearest_assignment
 from cgae.cgae_dense import Encoder
 
 import otp
@@ -48,8 +48,11 @@ def execute(args):
 
             # End goal is projection of atoms by atomic number onto coarse grained atom.
             relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geo.unsqueeze(2).cpu().detach()
+            nearest_assign = nearest_assignment(cg_xyz, geo)
             if args.gumble_sm_proj:
                 cg_proj = otp.project_onto_cg(relative_xyz, cg_assign, feat, args)
+            elif args.nearest:
+                cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
             else:
                 cg_proj = otp.project_onto_cg(relative_xyz, st_cg_assign, feat, args)
 
@@ -99,6 +102,7 @@ def execute(args):
             'temp': temp_sched[epoch].item(),
             'gumble': cg_assign,
             'st_gumble': st_cg_assign,
+            'nearest': nearest_assign
         })
 
     return {

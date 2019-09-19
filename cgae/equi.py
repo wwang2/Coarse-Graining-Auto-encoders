@@ -90,6 +90,17 @@ class Decoder(torch.nn.Module):
         return output
 
 
-class Autoencoder(object):
-    def __init__(self):
-        pass
+def nearest_assignment(cg, atoms, dim=-1, dtype=None):
+    assert len(cg.shape) == len(atoms.shape)
+    assert cg.device == atoms.device
+    device = cg.device
+
+    if len(cg.shape) == 2:
+        batch_mod = -1
+    elif len(cg.shape) == 3:
+        batch_mod = 0
+    else:
+        raise ValueError
+    assign_index = (atoms.unsqueeze(1 + batch_mod) - cg.unsqueeze(2 + batch_mod)).norm(dim=dim).argmin(1 + batch_mod)
+    assign = torch.zeros(atoms.shape, dtype=dtype, device=device).scatter_(dim, assign_index.unsqueeze(dim), 1.0)
+    return assign
