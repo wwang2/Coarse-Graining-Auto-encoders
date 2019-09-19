@@ -10,27 +10,34 @@ from argparse import ArgumentParser
 
 from cgae.gs import gumbel_softmax
 from cgae.cgae import temp_scheduler
-from cgae.equi import Decoder
-from cgae.cgae_dense import Encoder
-from cgae.cgae_dense import Decoder as DecoderDense
+import cgae.cgae_dense as dense
+import cgae.equi as equi
 
 import otp
 
-
-parser = ArgumentParser(parents=[otp.otp_parser(), otp.otp_equi_parser()], add_help=True)
+parser = ArgumentParser(parents=[otp.otp_parser(), otp.otp_equi_parser()])
+parser.add_argument("--dense", type=str, required=True, help="Pickle dict with 'encoder' and 'decoder' keys.")
 args = otp.parse_args(parser)
 
 
 def execute(args):
+    dense_dict = torch.load(args.dense, map_location=args.device)
     geometries, forces, features = otp.data(args)
+
+    encoder_dense = dense.Encoder(in_dim=geometries.size(1), out_dim=args.ncg, device=args.device).to(args.device)
+    encoder_dense.load_state_dict(dense_dict['encoder'])
+    encoder_dense.weight1.detach_()
+    decoder_dense = dense.Decoder(in_dim=args.ncg, out_dim=geometries.size(1)).to(args.device)
+    decoder_dense.load_state_dict(dense_dict['decoder'])
+    decoder_dense.weight.detach_()
 
     cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
     cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
-    encoder = Encoder(in_dim=geometries.size(1), out_dim=args.ncg, hard=False, device=args.device).to(args.device)
-    decoder = Decoder(args).to(device=args.device)
-    decoder_dense = DecoderDense(in_dim=args.ncg, out_dim=geometries.size(1)).to(args.device)
-    optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
+    # Encoder... TBD
+    decoder = equi.Decoder(args).to(device=args.device)
+    # optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
+    optimizer = torch.optim.Adam(list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
     n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args.bs)
 
@@ -43,8 +50,8 @@ def execute(args):
             feat, geo, force = features[batch], geometries[batch], forces[batch]
 
             # Auto encoder
-            cg_xyz = encoder(geo, temp_sched[epoch])
-            logits = encoder.weight1.t()
+            cg_xyz = encoder_dense(geo, temp_sched[epoch])
+            logits = encoder_dense.weight1.t()
             cg_assign, st_cg_assign = gumbel_softmax(logits, temp_sched[epoch],
                                                      dtype=args.precision, device=args.device)
             decoded = decoder_dense(cg_xyz)
@@ -68,10 +75,12 @@ def execute(args):
                 cg_force = torch.einsum('...ij,zik->zjk', cg_force_assign, force)
                 loss_fm = cg_force.pow(2).sum(-1).mean()
 
-                loss = loss_ae_equi + loss_ae_dense + args.fm_co * loss_fm
+                # loss = loss_ae_equi + loss_ae_dense + args.fm_co * loss_fm
             else:
                 loss_fm = torch.tensor(0)
-                loss = loss_ae_equi + loss_ae_dense
+                # loss = loss_ae_equi + loss_ae_dense
+
+            loss = loss_ae_equi
 
             dynamics.append({
                 'loss_ae_equi': loss_ae_equi.item(),
@@ -119,7 +128,7 @@ def execute(args):
         #     'pred': evaluate(f, features, geometry, test[:len(train)]),
         #     'true': forces[test[:len(train)]],
         # },
-        'encoder': encoder.state_dict() if args.save_state else None,
+        # 'encoder': encoder.state_dict() if args.save_state else None,
         'decoder': decoder.state_dict() if args.save_state else None,
     }
 

@@ -116,14 +116,14 @@ def data(args):
     return geometries, forces, features
 
 
-def batch(geometries, forces, features, args):
+def batch(geometries, forces, features, batch_size):
     n_atoms = geometries.size(1)
     n_features = features.size(-1)
-    n_batches = int(geometries.shape[0] // args.bs)
-    n_samples = n_batches * args.bs
-    geometries = geometries[:n_samples].reshape(n_batches, args.bs, n_atoms, 3)
-    forces = forces[:n_samples].reshape(n_batches, args.bs, n_atoms, 3)
-    features = features[:n_samples].reshape(n_batches, args.bs, n_atoms, n_features)
+    n_batches = int(geometries.shape[0] // batch_size)
+    n_samples = n_batches * batch_size
+    geometries = geometries[:n_samples].reshape(n_batches, batch_size, n_atoms, 3)
+    forces = forces[:n_samples].reshape(n_batches, batch_size, n_atoms, 3)
+    features = features[:n_samples].reshape(n_batches, batch_size, n_atoms, n_features)
     return n_batches, geometries, forces, features
 
 

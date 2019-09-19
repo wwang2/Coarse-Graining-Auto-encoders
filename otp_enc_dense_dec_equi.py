@@ -30,7 +30,7 @@ def execute(args):
     decoder = Decoder(args).to(device=args.device)
     optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(args.epochs, args.tdr, args.temp, args.tmin, dtype=args.precision, device=args.device)
-    n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args)
+    n_batches, geometries, forces, features = otp.batch(geometries, forces, features, args.bs)
 
     dynamics = []
     summaries = []
