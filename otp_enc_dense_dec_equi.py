@@ -8,23 +8,16 @@ from time import perf_counter
 from tqdm import tqdm
 from argparse import ArgumentParser
 
-from se3cnn.non_linearities import rescaled_act
-from se3cnn.SO3 import spherical_harmonics_xyz
-
 from cgae.gs import gumbel_softmax
 from cgae.cgae import temp_scheduler
-from cgae.equi import Decoder, ACTS
+from cgae.equi import Decoder
 from cgae.cgae_dense import Encoder
 
 import otp
-import otp_equi
 
 
-parser = otp_equi.add_args(otp.cgae_parser(), add_help=True)
+parser = ArgumentParser(parents=[otp.otp_parser(), otp.otp_equi_parser()], add_help=True)
 args = otp.parse_args(parser)
-
-ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
-ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
 
 def execute(args):
@@ -56,9 +49,9 @@ def execute(args):
             # End goal is projection of atoms by atomic number onto coarse grained atom.
             relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geo.unsqueeze(2).cpu().detach()
             if args.gumble_sm_proj:
-                cg_proj = otp_equi.project_onto_cg(relative_xyz, cg_assign, feat, args)
+                cg_proj = otp.project_onto_cg(relative_xyz, cg_assign, feat, args)
             else:
-                cg_proj = otp_equi.project_onto_cg(relative_xyz, st_cg_assign, feat, args)
+                cg_proj = otp.project_onto_cg(relative_xyz, st_cg_assign, feat, args)
 
             pred_sph = decoder(cg_features, cg_xyz.clone().detach())
             cg_proj = cg_proj.reshape_as(pred_sph)

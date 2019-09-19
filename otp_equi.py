@@ -8,55 +8,15 @@ from time import perf_counter
 from tqdm import tqdm
 from argparse import ArgumentParser
 
-from se3cnn.non_linearities import rescaled_act
-from se3cnn.SO3 import spherical_harmonics_xyz
-
 from cgae.gs import gumbel_softmax
 from cgae.cgae import temp_scheduler
-from cgae.equi import Encoder, Decoder, ACTS
+from cgae.equi import Encoder, Decoder
 
 import otp
 
 
-def add_args(parent_parser, add_help):
-    parser = ArgumentParser(parents=[parent_parser], add_help=add_help)
-    parser.add_argument("--high_l_encoder", action='store_true', help="Set the encoder to include high order sph.")
-    parser.add_argument("--scalar_act", type=str, default="relu", choices=ACTS, help="Select scalar activation.")
-    parser.add_argument("--gate_act", type=str, default="sigmoid", choices=ACTS, help="Select gate activation.")
-    parser.add_argument("--softplus_beta", type=float, default=1.0,
-                        help="Which beta for softplus and shifted softplus?")
-    parser.add_argument("--l0", type=int, default=5)
-    parser.add_argument("--enc_l0", type=int, default=20, help="l0 multiplicity for the encoder.")
-    parser.add_argument("--l1", type=int, default=5)
-    parser.add_argument("--l2", type=int, default=5)
-    parser.add_argument("--l3", type=int, default=5)
-    parser.add_argument("--l4", type=int, default=5)
-    parser.add_argument("--l5", type=int, default=5)
-    parser.add_argument("--enc_L", type=int, default=3, help="How many layers to create for the encoder.")
-    parser.add_argument("--dec_L", type=int, default=1, help="How many layers to create for the decoder.")
-    parser.add_argument("--rad_act", type=str, default="relu", choices=ACTS, help="Select radial activation.")
-    parser.add_argument("--rad_nb", type=int, default=20, help="Radial number of bases.")
-    parser.add_argument("--rad_maxr", type=float, default=3, help="Max radius.")
-    parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
-    parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
-    parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
-    parser.add_argument("--gumble_sm_proj", action='store_true',
-                        help="For the target projection, use a gumble softmax sample instead of a straight-through "
-                             "gumble softmax sample.")
-    return parser
-
-
-parser = add_args(otp.cgae_parser(), add_help=True)
+parser = ArgumentParser(parents=[otp.otp_parser(), otp.otp_equi_parser()], add_help=True)
 args = otp.parse_args(parser)
-
-ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
-ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
-
-
-def project_to_ylm(relative_coords, l_max=5, dtype=None, device=None):
-    sh = spherical_harmonics_xyz(range(l_max + 1), relative_coords, dtype=dtype, device=device)
-    rank = len(sh.shape)
-    return sh.permute(*range(1, rank), 0)
 
 
 # def autoencoder(args):
@@ -72,17 +32,6 @@ def project_to_ylm(relative_coords, l_max=5, dtype=None, device=None):
 #             out = f(features[batch], geometry[batch])  # [batch, atom, xyz]
 #             outs.append(out)
 #         return torch.cat(outs)
-
-
-def project_onto_cg(r, assignment, feature_mask, args):
-    # Project every atom onto each CG.
-    # Mask by straight-through cg assignment.
-    # Split into channels by atomic number.
-    cg_proj = project_to_ylm(r, l_max=args.proj_lmax, dtype=args.precision, device=args.device)  # B, n_atoms, n_cg, sph
-    cg_proj = assignment.unsqueeze(-1) * cg_proj  # B, n_atoms, n_cg, sph
-    cg_proj = cg_proj[..., None, :] * feature_mask[..., None, :, None]  # B, n_atoms, n_cg, atomic_numbers, sph
-    cg_proj = cg_proj.sum(1)  # B, n_cg, atomic_numbers, sph
-    return cg_proj
 
 
 def execute(args):
@@ -115,9 +64,9 @@ def execute(args):
             # End goal is projection of atoms by atomic number onto coarse grained atom.
             relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geo.unsqueeze(2).cpu().detach()
             if args.gumble_sm_proj:
-                cg_proj = project_onto_cg(relative_xyz, cg_assign, feat, args)
+                cg_proj = otp.project_onto_cg(relative_xyz, cg_assign, feat, args)
             else:
-                cg_proj = project_onto_cg(relative_xyz, st_cg_assign, feat, args)
+                cg_proj = otp.project_onto_cg(relative_xyz, st_cg_assign, feat, args)
 
             pred_sph = decoder(cg_features, cg_xyz.clone().detach())
             cg_proj = cg_proj.reshape_as(pred_sph)

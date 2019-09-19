@@ -16,7 +16,7 @@ def gumbel_softmax(logits, temperature, device, hard=False):
     y = gumbel_softmax_sample(logits, temperature, device)
     if hard:
         shape = y.size()
-        y_hard = torch.FloatTensor(shape).zero_()
+        y_hard = torch.FloatTensor(shape).zero_().to(device=device)
         CG = y  # .t()
         # print(y.shape)
         y_hard = y_hard.scatter_(1, CG.argmax(-1)[:, None], 1.0)

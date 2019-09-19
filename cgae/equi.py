@@ -18,8 +18,8 @@ ACTS = {
     'tanh': rescaled_act.tanh,
     'relu': rescaled_act.relu,
     'absolute': rescaled_act.absolute,
-    'softplus': rescaled_act.Softplus,
-    'shifted_softplus': rescaled_act.ShiftedSoftplus
+    # 'softplus': rescaled_act.Softplus,
+    # 'shifted_softplus': rescaled_act.ShiftedSoftplus
 }
 
 

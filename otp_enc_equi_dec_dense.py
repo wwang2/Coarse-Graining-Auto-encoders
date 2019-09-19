@@ -7,22 +7,18 @@ import torch.utils.data
 from time import perf_counter
 from tqdm import tqdm
 
-from se3cnn.non_linearities import rescaled_act
+from argparse import ArgumentParser
 
 from cgae.gs import gumbel_softmax
 from cgae.cgae import temp_scheduler
-from cgae.equi import Encoder, ACTS
+from cgae.equi import Encoder
 from cgae.cgae_dense import Decoder
 
 import otp
-import otp_equi
 
 
-parser = otp_equi.add_args(otp.cgae_parser(), add_help=True)
+parser = ArgumentParser(parents=[otp.otp_parser(), otp.otp_equi_parser()], add_help=True)
 args = otp.parse_args(parser)
-
-ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
-ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
 
 def execute(args):

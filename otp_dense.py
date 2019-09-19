@@ -14,7 +14,7 @@ from cgae.cgae import temp_scheduler
 
 import otp
 
-parser = ArgumentParser(parents=[otp.cgae_parser()])
+parser = ArgumentParser(parents=[otp.otp_parser()])
 args = otp.parse_args(parser)
 
 
