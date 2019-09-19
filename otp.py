@@ -22,7 +22,7 @@ def otp_parser():
     parser.add_argument("--atomic_nums", type=int, default=2, help="Count of possible atomic numbers.")
     parser.add_argument("--ncg", type=int, default=3, help="Count of coarse grained united atoms.")
     parser.add_argument("--temp", type=float, default=4.0, help="Set initial temperature.")
-    parser.add_argument("--tmin", type=float, default=0.2, help="Set minimum temperature.")
+    parser.add_argument("--tmin", type=float, default=0.1, help="Set minimum temperature.")
     parser.add_argument("--tdr", type=float, help="Temperature decay rate. Normally set automatically")
     parser.add_argument("--fm", action='store_true', help="Turn on force matching at a certain epoch.")
     parser.add_argument("--fm_epoch", type=int, default=400, help="Which epoch should force matching being.")
