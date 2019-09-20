@@ -59,7 +59,7 @@ def execute(args):
             loss_ae_dense = (decoded - geo).pow(2).sum(-1).mean()
 
             # End goal is projection of atoms by atomic number onto coarse grained atom.
-            relative_xyz = cg_xyz.unsqueeze(1).cpu().detach() - geo.unsqueeze(2).cpu().detach()
+            relative_xyz = geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
             nearest_assign = equi.nearest_assignment(cg_xyz, geo)
             if args.gumble_sm_proj:
                 cg_proj = otp.project_onto_cg(relative_xyz, cg_assign, feat, args)

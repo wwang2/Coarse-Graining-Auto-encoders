@@ -30,11 +30,11 @@ def xyz_signal_to_surface(signal_xyz, center, opacity=1.0):
 
 
 def assignment_to_color(onehot, color_map):
-    save_size = onehot.size()
-    onehot = onehot.reshape(-1, save_size[-1])
+    save_shape = onehot.shape
+    onehot = onehot.reshape(-1, save_shape[-1])
     argmax = torch.argmax(onehot, -1)
     colors = np.array([color_map[i.item()] for i in argmax])
-    colors = colors.reshape(*save_size[:-1], -1)
+    colors = colors.reshape(*save_shape[:-1], -1)
     return colors
 
 
