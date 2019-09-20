@@ -73,7 +73,10 @@ class Decoder(torch.nn.Module):
         C = partial(Convolution, K)
 
         Rs = [(args.l0, 0), (args.l1, 1), (args.l2, 2), (args.l3, 3), (args.l4, 4), (args.l5, 5)]
-        Rs = [[(args.ncg, 0)]] + [Rs] * args.dec_L
+        if args.cg_ones:
+            Rs = [[(1, 0)]] + [Rs] * args.dec_L
+        else:
+            Rs = [[(args.ncg, 0)]] + [Rs] * args.dec_L
         Rs += [[(mul, l) for l, mul in enumerate([1] * (args.proj_lmax + 1))] * args.atomic_nums]
 
         self.layers = torch.nn.ModuleList(

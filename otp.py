@@ -70,11 +70,15 @@ def otp_equi_parser():
     parser.add_argument("--rad_h", type=int, default=50, help="Size of radial weight parameters.")
     parser.add_argument("--rad_L", type=int, default=2, help="Number of radial layers.")
     parser.add_argument("--proj_lmax", type=int, default=5, help="What is the l max for projection.")
-    group = parser.add_argument_group()
-    group.add_argument("--gumble_sm_proj", action='store_true',
-                       help="For the target projection, use a gumble softmax sample instead of a straight-through "
-                            "gumble softmax sample.")
-    group.add_argument("--nearest", action='store_true', help="Use the nearest atoms for sph projection target.")
+    projection_group = parser.add_argument_group()
+    projection_group.add_argument("--gumble_sm_proj", action="store_true",
+                                  help="For the target projection, use a gumble softmax sample instead of a "
+                                       "straight-through gumble softmax sample.")
+    projection_group.add_argument("--nearest", action='store_true',
+                                  help="Use the nearest atoms for sph projection target.")
+    cg_features_group = parser.add_argument_group()
+    cg_features_group.add_argument("--cg_ones", action="store_true", help="cg_features get a single scalar channel.")
+
     return parser
 
 

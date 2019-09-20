@@ -23,8 +23,11 @@ args = otp.parse_args(parser)
 def execute(args):
     geometries, forces, features = otp.data(args)
 
-    cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
-    cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
+    if args.cg_ones:
+        cg_features = torch.ones(args.bs, args.ncg, 1, dtype=args.precision, device=args.device)
+    else:
+        cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
+        cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
     encoder = Encoder(in_dim=geometries.size(1), out_dim=args.ncg, hard=False, device=args.device).to(args.device)
     decoder = Decoder(args).to(device=args.device)

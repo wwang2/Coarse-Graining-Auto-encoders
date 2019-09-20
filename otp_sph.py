@@ -31,8 +31,11 @@ def execute(args):
     decoder_dense.load_state_dict(dense_dict['decoder'])
     decoder_dense.weight.detach_()
 
-    cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
-    cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
+    if args.cg_ones:
+        cg_features = torch.ones(args.bs, args.ncg, 1, dtype=args.precision, device=args.device)
+    else:
+        cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
+        cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
     # Encoder... TBD
     decoder = equi.Decoder(args).to(device=args.device)
