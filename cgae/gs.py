@@ -15,6 +15,8 @@ def sample_gumbel_softmax(logits, temperature, dim=-1, dtype=None, device=None):
 def gumbel_softmax(logits, temperature, dim=-1, dtype=None, device=None):
     """Sample a gumbel softmax distribution in dim = -1. Returns gumble, straight-through gumble."""
     y = sample_gumbel_softmax(logits, temperature, dim=dim, dtype=dtype, device=device)
-    st_y = torch.zeros(y.shape, dtype=dtype, device=device).scatter_(dim, y.argmax(dim).unsqueeze(dim), 1.0)
+    st_y = torch.zeros(y.shape, dtype=dtype, device=device).scatter_(
+        dim, y.argmax(dim).unsqueeze(dim), 1.0
+    )
     st_y = (st_y - y).detach() + y
     return y, st_y

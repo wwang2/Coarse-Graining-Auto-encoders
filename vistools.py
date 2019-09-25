@@ -26,7 +26,9 @@ def xyz_signal_to_surface(signal_xyz, center, opacity=1.0):
     x += xd
     y += yd
     z += zd
-    return go.Surface(x=x, y=y, z=z, showscale=False, surfacecolor=signal, opacity=opacity)
+    return go.Surface(
+        x=x, y=y, z=z, showscale=False, surfacecolor=signal, opacity=opacity
+    )
 
 
 def assignment_to_color(onehot, color_map):
@@ -38,18 +40,10 @@ def assignment_to_color(onehot, color_map):
     return colors
 
 
-def trace_pts(ar1, color='red', opacity=1.0):
+def trace_pts(ar1, color="red", opacity=1.0):
     x, y, z = ar1.T
 
     trace = go.Scatter3d(
-        x=x,
-        y=y,
-        z=z,
-        mode='markers',
-        marker=dict(
-            size=8,
-            opacity=opacity,
-            color=color
-        )
+        x=x, y=y, z=z, mode="markers", marker=dict(size=8, opacity=opacity, color=color)
     )
     return trace

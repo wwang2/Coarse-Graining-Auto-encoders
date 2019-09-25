@@ -2,12 +2,12 @@ import torch
 import torch.nn.functional
 
 
-def sample_gumbel(shape, device='cpu', eps=1e-20):
+def sample_gumbel(shape, device="cpu", eps=1e-20):
     U = torch.rand(shape).to(device)
     return -torch.log(-torch.log(U + eps) + eps)
 
 
-def gumbel_softmax_sample(logits, temperature, device='cpu'):
+def gumbel_softmax_sample(logits, temperature, device="cpu"):
     y = logits + sample_gumbel(logits.size(), device)
     return torch.nn.functional.softmax(y / temperature, dim=-1)
 
@@ -26,7 +26,7 @@ def gumbel_softmax(logits, temperature, device, hard=False):
 
 
 class Encoder(torch.nn.Module):
-    def __init__(self, in_dim, out_dim, hard=False, device='cpu'):
+    def __init__(self, in_dim, out_dim, hard=False, device="cpu"):
         super(Encoder, self).__init__()
         self.out_dim = out_dim
         self.in_dim = in_dim
@@ -38,9 +38,13 @@ class Encoder(torch.nn.Module):
         self.weight1 = torch.nn.Parameter(torch.rand(self.out_dim, self.in_dim))
 
     def forward(self, xyz, temp):
-        CG = gumbel_softmax(self.weight1.t(), temp, hard=self.hard, device=self.device).t()
+        CG = gumbel_softmax(
+            self.weight1.t(), temp, hard=self.hard, device=self.device
+        ).t()
         self.CG = CG / CG.sum(1).unsqueeze(1)
-        return torch.matmul(self.CG.expand(xyz.shape[0], self.out_dim, self.in_dim), xyz)
+        return torch.matmul(
+            self.CG.expand(xyz.shape[0], self.out_dim, self.in_dim), xyz
+        )
 
 
 class Decoder(torch.nn.Module):
