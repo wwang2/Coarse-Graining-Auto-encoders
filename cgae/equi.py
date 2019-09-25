@@ -69,7 +69,7 @@ class Encoder(torch.nn.Module):
 
 
 class Decoder(torch.nn.Module):
-    def __init__(self, args, Rs=None):
+    def __init__(self, args, Rs_in=None):
         super().__init__()
         radial_model = partial(
             CosineBasisModel,
@@ -82,13 +82,13 @@ class Decoder(torch.nn.Module):
         K = partial(Kernel, RadialModel=radial_model)
         C = partial(Convolution, K)
 
-        if Rs is None:
+        if Rs_in is None:
             if args.cg_ones:
-                Rs = [[(1, 0)]]
+                Rs_in = [[(1, 0)]]
             elif args.cg_specific_atom:
-                Rs = [[(1, 0), (1, 2)]]
+                Rs_in = [[(1, 0), (1, 2)]]
             else:
-                Rs = [[(args.ncg, 0)]]
+                Rs_in = [[(args.ncg, 0)]]
         Rs_middle = [
             (args.l0, 0),
             (args.l1, 1),
@@ -99,7 +99,7 @@ class Decoder(torch.nn.Module):
             (5, 6),
             # (5, 7)
         ]
-        Rs += [Rs_middle] * args.dec_L
+        Rs = Rs_in + [Rs_middle] * args.dec_L
         Rs += [
             [(mul, l) for l, mul in enumerate([1] * (args.proj_lmax + 1))]
             * args.atomic_nums

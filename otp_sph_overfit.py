@@ -35,7 +35,9 @@ def single_example(args):
                 [-2.2999983, 0.75210804, 4.8020134],
                 [0.03099308, 4.3005924, 3.2575095],
             ]
-        ]
+        ],
+        device=args.device,
+        dtype=args.precision,
     )
 
     geo = torch.tensor(
@@ -74,7 +76,9 @@ def single_example(args):
                 [-0.856573, 6.50135, 1.8472],
                 [-2.14819, 4.48423, 2.48099],
             ]
-        ]
+        ],
+        device=args.device,
+        dtype=args.precision,
     )
 
     feat = torch.tensor(
@@ -111,11 +115,13 @@ def single_example(args):
             [1.0, 0.0],
             [1.0, 0.0],
             [1.0, 0.0],
-        ]
+        ],
+        device=args.device,
+        dtype=args.precision,
     )
 
-    # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
-    # relative_xyz = geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
+    # # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
+    # relative_xyz = geo.unsqueeze(2) - cg_xyz.unsqueeze(1)
     # nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
     # gather_inds = nearest_atom_ind.reshape(3, 1).repeat(1, 3).reshape(1, 1, 3, 3)
     # nearest_atoms = relative_xyz.gather(1, gather_inds)
@@ -133,8 +139,8 @@ def single_example(args):
     # cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
     # cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
-    # Rs = [[(1, 0), (1, 2)]]
-    Rs = [
+    # Rs_in = [[(1, 0), (1, 2)]]
+    Rs_in = [
         [
             (1, 0),
             (1, 1),
@@ -142,15 +148,17 @@ def single_example(args):
             (1, 3),
             (1, 4),
             (1, 5),
+            (1, 6),
             (1, 0),
             (1, 1),
             (1, 2),
             (1, 3),
             (1, 4),
             (1, 5),
+            (1, 6),
         ]
     ]
-    decoder = equi.Decoder(args, Rs=Rs).to(device=args.device)
+    decoder = equi.Decoder(args, Rs_in=Rs_in).to(device=args.device)
     optimizer = torch.optim.Adam(list(decoder.parameters()), lr=args.lr)
 
     dynamics = []
