@@ -115,24 +115,42 @@ def single_example(args):
     )
 
     # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
-    relative_xyz = geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
-    nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
-    gather_inds = nearest_atom_ind.reshape(3, 1).repeat(1, 3).reshape(1, 1, 3, 3)
-    nearest_atoms = relative_xyz.gather(1, gather_inds)
-    atom_mask = torch.zeros_like(nearest_atoms).scatter(
-        2, torch.zeros_like(nearest_atoms, dtype=torch.long)[:, :, 0:1, :], 1.0
-    )
-    cg_features = (nearest_atoms * atom_mask).reshape(*cg_xyz.shape[:2], -1)
-    cg_features = spherical_harmonics_xyz(2, cg_features).permute(1, 2, 0)
-    l1_features = torch.ones(
-        *cg_features.shape[:2], 1, device=args.device, dtype=args.precision
-    )
-    cg_features = torch.cat([l1_features, cg_features], dim=-1)
+    # relative_xyz = geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
+    # nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
+    # gather_inds = nearest_atom_ind.reshape(3, 1).repeat(1, 3).reshape(1, 1, 3, 3)
+    # nearest_atoms = relative_xyz.gather(1, gather_inds)
+    # atom_mask = torch.zeros_like(nearest_atoms).scatter(
+    #     2, torch.zeros_like(nearest_atoms, dtype=torch.long)[:, :, 0:1, :], 1.0
+    # )
+    # cg_features = (nearest_atoms * atom_mask).reshape(*cg_xyz.shape[:2], -1)
+    # cg_features = spherical_harmonics_xyz(2, cg_features).permute(1, 2, 0)
+    # l1_features = torch.ones(
+    #     *cg_features.shape[:2], 1, device=args.device, dtype=args.precision
+    # )
+    # cg_features = torch.cat([l1_features, cg_features], dim=-1)
 
+    # One hot cg
     # cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
     # cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
-    decoder = equi.Decoder(args, Rs=[[(1, 0), (1, 2)]]).to(device=args.device)
+    # Rs = [[(1, 0), (1, 2)]]
+    Rs = [
+        [
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (1, 4),
+            (1, 5),
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (1, 4),
+            (1, 5),
+        ]
+    ]
+    decoder = equi.Decoder(args, Rs=Rs).to(device=args.device)
     optimizer = torch.optim.Adam(list(decoder.parameters()), lr=args.lr)
 
     dynamics = []
@@ -147,7 +165,8 @@ def single_example(args):
         nearest_assign = equi.nearest_assignment(cg_xyz, geo)
         cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
 
-        pred_sph = decoder(cg_features.narrow(0, 0, 1), cg_xyz.clone().detach())
+        cg_features = cg_proj.reshape(*cg_proj.shape[:-2], -1).clone()
+        pred_sph = decoder(cg_features, cg_xyz.clone().detach())
         cg_proj = cg_proj.reshape_as(pred_sph)
         loss_ae_equi = (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
 

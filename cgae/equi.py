@@ -54,9 +54,8 @@ class Encoder(torch.nn.Module):
         self.layers = torch.nn.ModuleList(
             [
                 GatedBlock(Rs_in, Rs_out, ACTS[args.scalar_act], ACTS[args.gate_act], C)
-                for Rs_in, Rs_out in zip(Rs[:-1], Rs[1:-1])
+                for Rs_in, Rs_out in zip(Rs, Rs[1:])
             ]
-            + [C(Rs[-2], Rs[-1])]
         )
         self.Rs = Rs
 
@@ -97,6 +96,8 @@ class Decoder(torch.nn.Module):
             (args.l3, 3),
             (args.l4, 4),
             (args.l5, 5),
+            (5, 6),
+            # (5, 7)
         ]
         Rs += [Rs_middle] * args.dec_L
         Rs += [
@@ -107,9 +108,8 @@ class Decoder(torch.nn.Module):
         self.layers = torch.nn.ModuleList(
             [
                 GatedBlock(Rs_in, Rs_out, ACTS[args.scalar_act], ACTS[args.gate_act], C)
-                for Rs_in, Rs_out in zip(Rs[:-1], Rs[1:-1])
+                for Rs_in, Rs_out in zip(Rs, Rs[1:])
             ]
-            + [C(Rs[-2], Rs[-1])]
         )
         self.Rs = Rs
 
