@@ -24,6 +24,18 @@ parser.add_argument(
     required=True,
     help="Pickle dict with 'encoder' and 'decoder' keys.",
 )
+parser.add_argument(
+    "--single_example", action="store_true", help="Test the single example instead."
+)
+se_options = parser.add_argument_group()
+se_options.add_argument(
+    "--se_project",
+    action="store_true",
+    help="Project an atom onto one cg atom in the single example.",
+)
+se_options.add_argument(
+    "--se_soln", action="store_true", help="Give the single example the real solution."
+)
 args = otp.parse_args(parser)
 
 
@@ -120,30 +132,38 @@ def single_example(args):
         dtype=args.precision,
     )
 
-    # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
-    relative_xyz = geo.unsqueeze(2) - cg_xyz.unsqueeze(1)
-    nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
-    gather_inds = nearest_atom_ind.reshape(3, 1).repeat(1, 3).reshape(1, 1, 3, 3)
-    nearest_atoms = relative_xyz.gather(1, gather_inds)
-    atom_mask = torch.zeros_like(nearest_atoms).scatter(
-        2, torch.zeros_like(nearest_atoms, dtype=torch.long)[:, :, 0:1, :], 1.0
-    )
-    cg_features = (nearest_atoms * atom_mask).reshape(*cg_xyz.shape[:2], -1)
-    cg_features = spherical_harmonics_xyz(2, cg_features).permute(1, 2, 0)
-    l1_features = torch.ones(
-        *cg_features.shape[:2], 1, device=args.device, dtype=args.precision
-    )
-    cg_features = torch.cat([l1_features, cg_features], dim=-1)
+    # End goal is projection of atoms by atomic number onto coarse grained atom.
+    relative_xyz = geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
+    nearest_assign = equi.nearest_assignment(cg_xyz, geo)
+    cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
 
-    # One hot cg
-    # cg_features = torch.zeros(args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device)
-    # cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
+    if args.se_project:
+        # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
+        relative_xyz = geo.unsqueeze(2) - cg_xyz.unsqueeze(1)
+        nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
+        gather_inds = nearest_atom_ind.reshape(3, 1).repeat(1, 3).reshape(1, 1, 3, 3)
+        nearest_atoms = relative_xyz.gather(1, gather_inds)
+        atom_mask = torch.zeros_like(nearest_atoms).scatter(
+            2, torch.zeros_like(nearest_atoms, dtype=torch.long)[:, :, 0:1, :], 1.0
+        )
+        cg_features = (nearest_atoms * atom_mask).reshape(*cg_xyz.shape[:2], -1)
+        cg_features = spherical_harmonics_xyz(2, cg_features).permute(1, 2, 0)
+        l1_features = torch.ones(
+            *cg_features.shape[:2], 1, device=args.device, dtype=args.precision
+        )
+        cg_features = torch.cat([l1_features, cg_features], dim=-1)
+        Rs_in = [[(1, 0), (1, 2)]]
+    elif args.se_soln:
+        cg_features = cg_proj.view(*cg_proj.shape[:-2], -1).clone()  # Give solution
+        Rs_in = [[(1, l) for mul, l in enumerate(range(args.proj_lmax + 1))] * 2]
+    else:
+        cg_features = (
+            torch.tensor([1.0], dtype=args.precision, device=args.device)
+            .repeat(args.ncg)
+            .reshape(1, args.ncg, -1)
+        )
+        Rs_in = [[(1, 0)]]
 
-    Rs_in = [[(1, 0), (1, 2)]]
-    # Rs_in = [[(1, l) for mul, l in enumerate(range(args.proj_lmax + 1))] * 2]
-    # Rs_in = [[(1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6),]]
-    # Rs_in = [[(1, 0), (1, 1)]]
-    # Rs_out = [[(1, 0), (1, 1)]]
     decoder = equi.Decoder(args, Rs_in=Rs_in).to(device=args.device)
     optimizer = torch.optim.Adam(list(decoder.parameters()), lr=args.lr)
 
@@ -152,23 +172,10 @@ def single_example(args):
     wall_start = perf_counter()
     torch.manual_seed(args.seed)
     for step in tqdm(range(1000)):
-        # End goal is projection of atoms by atomic number onto coarse grained atom.
-        relative_xyz = (
-            geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
-        )
-        nearest_assign = equi.nearest_assignment(cg_xyz, geo)
-        cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
-
-        # cg_features = cg_proj.view(*cg_proj.shape[:-2], -1).clone()  # Give solution
-
-        # cg_proj = torch.tensor([0., 1., 0., 0.], dtype=args.precision, device=args.device).repeat(args.ncg).reshape(1, args.ncg, -1)
-        # cg_features = cg_proj
-
         pred_sph = decoder(cg_features, cg_xyz.clone().detach())
-        cg_proj = cg_proj.reshape_as(pred_sph)
-        # loss_ae_equi = (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
-        loss_ae_equi = (cg_proj - pred_sph).abs().sum(-1).mean()
+        sph = cg_proj.reshape_as(pred_sph)
 
+        loss_ae_equi = (sph - pred_sph).abs().sum(-1).mean()
         loss = loss_ae_equi
 
         dynamics.append(
@@ -190,7 +197,7 @@ def single_example(args):
                 "step": step,
                 "cg_xyz": cg_xyz,
                 "pred_sph": pred_sph,
-                "sph": cg_proj,
+                "sph": sph,
                 "nearest": nearest_assign,
             }
         )
@@ -374,12 +381,14 @@ def execute(args):
 
 
 def main():
-    # results = execute(args)
-    # with open(args.pickle, 'wb') as f:
-    #     torch.save(results, f)
-    ok = single_example(args)
-    with open(args.pickle, "wb") as f:
-        torch.save(ok, f)
+    if args.single_example:
+        ok = single_example(args)
+        with open(args.pickle, "wb") as f:
+            torch.save(ok, f)
+    else:
+        results = execute(args)
+        with open(args.pickle, "wb") as f:
+            torch.save(results, f)
 
 
 if __name__ == "__main__":
