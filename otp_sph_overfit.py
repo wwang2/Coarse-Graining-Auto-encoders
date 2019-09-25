@@ -140,25 +140,11 @@ def single_example(args):
     # cg_features.scatter_(-1, torch.arange(args.ncg, device=args.device).expand(args.bs, args.ncg).unsqueeze(-1), 1.0)
 
     # Rs_in = [[(1, 0), (1, 2)]]
-    Rs_in = [
-        [
-            (1, 0),
-            (1, 1),
-            (1, 2),
-            (1, 3),
-            (1, 4),
-            (1, 5),
-            (1, 6),
-            (1, 0),
-            (1, 1),
-            (1, 2),
-            (1, 3),
-            (1, 4),
-            (1, 5),
-            (1, 6),
-        ]
-    ]
-    decoder = equi.Decoder(args, Rs_in=Rs_in).to(device=args.device)
+    Rs_in = [[(1, l) for mul, l in enumerate(range(args.proj_lmax + 1))] * 2]
+    # Rs_in = [[(1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6),]]
+    # Rs_in = [[(1, 0), (1, 1)]]
+    # Rs_out = [[(1, 0), (1, 1)]]
+    decoder = equi.Decoder(args, Rs_in=Rs_in, Rs_out=Rs_in).to(device=args.device)
     optimizer = torch.optim.Adam(list(decoder.parameters()), lr=args.lr)
 
     dynamics = []
@@ -173,10 +159,15 @@ def single_example(args):
         nearest_assign = equi.nearest_assignment(cg_xyz, geo)
         cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
 
-        cg_features = cg_proj.reshape(*cg_proj.shape[:-2], -1).clone()
+        cg_features = cg_proj.view(*cg_proj.shape[:-2], -1).clone()  # Give solution
+
+        # cg_proj = torch.tensor([0., 1., 0., 0.], dtype=args.precision, device=args.device).repeat(args.ncg).reshape(1, args.ncg, -1)
+        # cg_features = cg_proj
+
         pred_sph = decoder(cg_features, cg_xyz.clone().detach())
         cg_proj = cg_proj.reshape_as(pred_sph)
-        loss_ae_equi = (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
+        # loss_ae_equi = (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
+        loss_ae_equi = (cg_proj - pred_sph).abs().sum(-1).mean()
 
         loss = loss_ae_equi
 

@@ -18,8 +18,8 @@ ACTS = {
     "tanh": rescaled_act.tanh,
     "relu": rescaled_act.relu,
     "absolute": rescaled_act.absolute,
-    # 'softplus': rescaled_act.Softplus,
-    # 'shifted_softplus': rescaled_act.ShiftedSoftplus
+    "softplus": rescaled_act.Softplus,
+    "shifted_softplus": rescaled_act.ShiftedSoftplus,
 }
 
 
@@ -69,7 +69,7 @@ class Encoder(torch.nn.Module):
 
 
 class Decoder(torch.nn.Module):
-    def __init__(self, args, Rs_in=None):
+    def __init__(self, args, Rs_in=None, Rs_out=None):
         super().__init__()
         radial_model = partial(
             CosineBasisModel,
@@ -89,6 +89,7 @@ class Decoder(torch.nn.Module):
                 Rs_in = [[(1, 0), (1, 2)]]
             else:
                 Rs_in = [[(args.ncg, 0)]]
+
         Rs_middle = [
             (args.l0, 0),
             (args.l1, 1),
@@ -99,11 +100,14 @@ class Decoder(torch.nn.Module):
             (5, 6),
             # (5, 7)
         ]
-        Rs = Rs_in + [Rs_middle] * args.dec_L
-        Rs += [
-            [(mul, l) for l, mul in enumerate([1] * (args.proj_lmax + 1))]
-            * args.atomic_nums
-        ]
+
+        if Rs_out is None:
+            Rs_out = [
+                [(mul, l) for l, mul in enumerate([1] * (args.proj_lmax + 1))]
+                * args.atomic_nums
+            ]
+
+        Rs = Rs_in + [Rs_middle] * args.dec_L + Rs_out
 
         self.layers = torch.nn.ModuleList(
             [

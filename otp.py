@@ -7,6 +7,7 @@ import torch.utils.data
 import argparse
 
 from se3cnn.SO3 import spherical_harmonics_xyz
+from se3cnn.non_linearities import rescaled_act
 
 from cgae.cgae import load_data, otp_element_to_onehot
 from cgae.equi import ACTS
@@ -109,7 +110,7 @@ def otp_equi_parser():
     parser.add_argument(
         "--scalar_act",
         type=str,
-        default="relu",
+        default="softplus",
         choices=ACTS,
         help="Select scalar activation.",
     )
@@ -150,7 +151,7 @@ def otp_equi_parser():
     parser.add_argument(
         "--rad_act",
         type=str,
-        default="relu",
+        default="softplus",
         choices=ACTS,
         help="Select radial activation.",
     )
@@ -199,8 +200,8 @@ def parse_args(parser):
     gpu = torch.cuda.is_available() and not args.cpu
     args.device = torch.device(f"cuda:{args.gpu}") if gpu else torch.device("cpu")
 
-    # ACTS['softplus'] = rescaled_act.Softplus(args.softplus_beta)
-    # ACTS['shifted_softplus'] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
+    ACTS["softplus"] = rescaled_act.Softplus(args.softplus_beta)
+    ACTS["shifted_softplus"] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
     print(f"Calculating on {args.device}.")
     return args
