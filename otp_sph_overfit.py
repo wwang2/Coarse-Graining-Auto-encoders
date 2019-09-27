@@ -27,14 +27,14 @@ parser.add_argument(
 parser.add_argument(
     "--single_example", action="store_true", help="Test the single example instead."
 )
-se_options = parser.add_argument_group()
+se_options = parser.add_mutually_exclusive_group()
 se_options.add_argument(
-    "--se_project",
+    "--project_one",
     action="store_true",
     help="Project an atom onto one cg atom in the single example.",
 )
 se_options.add_argument(
-    "--se_soln", action="store_true", help="Give the single example the real solution."
+    "--soln", action="store_true", help="Give the single example the real solution."
 )
 args = otp.parse_args(parser)
 
@@ -135,25 +135,29 @@ def single_example(args):
     # End goal is projection of atoms by atomic number onto coarse grained atom.
     relative_xyz = geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
     nearest_assign = equi.nearest_assignment(cg_xyz, geo)
-    cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
+    cg_proj = otp.project_onto_cg(
+        relative_xyz, nearest_assign, feat, args, adjusted=False
+    )
 
-    if args.se_project:
+    if args.project_one:
         # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
         relative_xyz = geo.unsqueeze(2) - cg_xyz.unsqueeze(1)
         nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
-        gather_inds = nearest_atom_ind.reshape(3, 1).repeat(1, 3).reshape(1, 1, 3, 3)
-        nearest_atoms = relative_xyz.gather(1, gather_inds)
-        atom_mask = torch.zeros_like(nearest_atoms).scatter(
-            2, torch.zeros_like(nearest_atoms, dtype=torch.long)[:, :, 0:1, :], 1.0
+        cg_atom_ind = 2
+        l2_features = otp.project_atom_onto_cg_features(
+            relative_xyz,
+            2,
+            nearest_atom_ind[cg_atom_ind],
+            cg_atom_ind,
+            dtype=args.precision,
+            device=args.device,
         )
-        cg_features = (nearest_atoms * atom_mask).reshape(*cg_xyz.shape[:2], -1)
-        cg_features = spherical_harmonics_xyz(2, cg_features).permute(1, 2, 0)
         l1_features = torch.ones(
-            *cg_features.shape[:2], 1, device=args.device, dtype=args.precision
+            *l2_features.shape[:2], 1, device=args.device, dtype=args.precision
         )
-        cg_features = torch.cat([l1_features, cg_features], dim=-1)
+        cg_features = torch.cat([l1_features, l2_features], dim=-1)
         Rs_in = [[(1, 0), (1, 2)]]
-    elif args.se_soln:
+    elif args.soln:
         cg_features = cg_proj.view(*cg_proj.shape[:-2], -1).clone()  # Give solution
         Rs_in = [[(1, l) for mul, l in enumerate(range(args.proj_lmax + 1))] * 2]
     else:
@@ -235,25 +239,19 @@ def execute(args):
     decoder_dense.weight.detach_()
 
     if args.cg_ones:
-        cg_features = torch.ones(
-            args.bs, args.ncg, 1, dtype=args.precision, device=args.device
-        )
+        Rs_in = [[(1, 0)]]
+    elif args.project_one:
+        Rs_in = [[(1, 0), (1, 2)]]
+    elif args.soln:
+        Rs_in = [[(1, l) for mul, l in enumerate(range(args.proj_lmax + 1))] * 2]
     elif args.cg_specific_atom:
-        pass
+        raise NotImplementedError()
+        # Rs_in = [[(1, 0), (1, args.cg_specific_atom)]]
     else:
-        cg_features = torch.zeros(
-            args.bs, args.ncg, args.ncg, dtype=args.precision, device=args.device
-        )
-        cg_features.scatter_(
-            -1,
-            torch.arange(args.ncg, device=args.device)
-            .expand(args.bs, args.ncg)
-            .unsqueeze(-1),
-            1.0,
-        )
+        Rs_in = [[(args.ncg, 0)]]
 
     # Encoder... TBD
-    decoder = equi.Decoder(args).to(device=args.device)
+    decoder = equi.Decoder(args, Rs_in).to(device=args.device)
     # optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr)
     optimizer = torch.optim.Adam(list(decoder.parameters()), lr=args.lr)
     temp_sched = temp_scheduler(
@@ -288,6 +286,7 @@ def execute(args):
             decoded = decoder_dense(cg_xyz)
             loss_ae_dense = (decoded - geo).pow(2).sum(-1).mean()
 
+            # Calculate Ground Truth
             # End goal is projection of atoms by atomic number onto coarse grained atom.
             relative_xyz = (
                 geo.unsqueeze(2).cpu().detach() - cg_xyz.unsqueeze(1).cpu().detach()
@@ -299,13 +298,66 @@ def execute(args):
                 cg_proj = otp.project_onto_cg(relative_xyz, nearest_assign, feat, args)
             else:
                 cg_proj = otp.project_onto_cg(relative_xyz, st_cg_assign, feat, args)
+            cg_proj = cg_proj.reshape(args.bs, args.ncg, -1)
+
+            # Features and Predict
+            if args.cg_ones:
+                cg_features = torch.ones(
+                    args.bs, args.ncg, 1, dtype=args.precision, device=args.device
+                )
+            elif args.project_one:
+                # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
+                relative_xyz = geo.unsqueeze(2) - cg_xyz.unsqueeze(1)
+                nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
+                cg_atom_ind = 2
+                l2_features = otp.project_atom_onto_cg_features(
+                    relative_xyz,
+                    2,
+                    nearest_atom_ind[cg_atom_ind],
+                    cg_atom_ind,
+                    dtype=args.precision,
+                    device=args.device,
+                )
+                l1_features = torch.ones(
+                    *l2_features.shape[:2], 1, device=args.device, dtype=args.precision
+                )
+                cg_features = torch.cat([l1_features, l2_features], dim=-1)
+            elif args.soln:
+                cg_features = cg_proj.clone()  # Give solution
+            elif args.cg_specific_atom:
+                raise NotImplementedError()
+                # # The purpose is to select the nearest atom to a cg_atom, project it, give a single atom that feature.
+                # relative_xyz = geo.unsqueeze(2) - cg_xyz.unsqueeze(1)
+                # nearest_atom_ind = relative_xyz.norm(dim=-1).argmin(1).squeeze()
+                # cg_atom_ind = 2
+                # l2_features = otp.project_atom_onto_cg_features(relative_xyz, args.cg_specific_atom, nearest_atom_ind[cg_atom_ind],
+                #                                                 cg_atom_ind, dtype=args.precision, device=args.device)
+                # l1_features = torch.ones(
+                #     *l2_features.shape[:2], 1, device=args.device, dtype=args.precision
+                # )
+                # cg_features = torch.cat([l1_features, l2_features], dim=-1)
+            else:
+                cg_features = torch.zeros(
+                    args.bs,
+                    args.ncg,
+                    args.ncg,
+                    dtype=args.precision,
+                    device=args.device,
+                )
+                cg_features.scatter_(
+                    -1,
+                    torch.arange(args.ncg, device=args.device)
+                    .expand(args.bs, args.ncg)
+                    .unsqueeze(-1),
+                    1.0,
+                )
 
             pred_sph = decoder(cg_features, cg_xyz.clone().detach())
-            cg_proj = cg_proj.reshape_as(pred_sph)
+
+            # Loss
             loss_ae_equi = (
                 (cg_proj - pred_sph).pow(2).sum(-1).div(args.atomic_nums).mean()
             )
-
             if args.fm and epoch >= args.fm_epoch:
                 # Force matching
                 cg_force_assign, _ = gumbel_softmax(
@@ -321,7 +373,6 @@ def execute(args):
             else:
                 loss_fm = torch.tensor(0)
                 # loss = loss_ae_equi + loss_ae_dense
-
             loss = loss_ae_equi
 
             dynamics.append(

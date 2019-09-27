@@ -6,7 +6,7 @@ import torch.utils.data
 
 import argparse
 
-from se3cnn.SO3 import spherical_harmonics_xyz
+import se3cnn.SO3 as SO3
 from se3cnn.non_linearities import rescaled_act
 
 from cgae.cgae import load_data, otp_element_to_onehot
@@ -57,7 +57,7 @@ def otp_parser():
 
     # General hyper parameters
     parser.add_argument("--bs", type=int, default=32, help="Batch size.")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate.")
     parser.add_argument(
         "--force_temp_coeff",
         type=float,
@@ -166,7 +166,7 @@ def otp_equi_parser():
     parser.add_argument(
         "--proj_lmax", type=int, default=5, help="What is the l max for projection."
     )
-    projection_group = parser.add_argument_group()
+    projection_group = parser.add_mutually_exclusive_group()
     projection_group.add_argument(
         "--gumble_sm_proj",
         action="store_true",
@@ -178,7 +178,7 @@ def otp_equi_parser():
         action="store_true",
         help="Use the nearest atoms for sph projection target.",
     )
-    cg_features_group = parser.add_argument_group()
+    cg_features_group = parser.add_mutually_exclusive_group()
     cg_features_group.add_argument(
         "--cg_ones",
         action="store_true",
@@ -207,12 +207,16 @@ def parse_args(parser):
     return args
 
 
-def project_onto_cg(r, assignment, feature_mask, args):
+def project_onto_cg(r, assignment, feature_mask, args, adjusted=False):
     # Project every atom onto each CG.
     # Mask by straight-through cg assignment.
     # Split into channels by atomic number.
     cg_proj = project_to_ylm(
-        r, l_max=args.proj_lmax, dtype=args.precision, device=args.device
+        r,
+        l_max=args.proj_lmax,
+        dtype=args.precision,
+        device=args.device,
+        adjusted=adjusted,
     )  # B, n_atoms, n_cg, sph
     cg_proj = assignment.unsqueeze(-1) * cg_proj  # B, n_atoms, n_cg, sph
     cg_proj = (
@@ -222,14 +226,69 @@ def project_onto_cg(r, assignment, feature_mask, args):
     return cg_proj
 
 
-def project_to_ylm(relative_coords, l_max=5, normalize=False, dtype=None, device=None):
-    sh = spherical_harmonics_xyz(
-        range(l_max + 1), relative_coords, dtype=dtype, device=device
+def project_to_ylm(relative_coords, l_max=5, dtype=None, device=None, adjusted=False):
+    if adjusted:
+        by_batch = []
+        for b in range(relative_coords.shape[0]):
+            proj_on_cg = torch.stack(
+                [
+                    adjusted_projection(relative_coords[b, :, i, :], l_max)
+                    for i in range(relative_coords.shape[2])
+                ],
+                dim=1,
+            )
+            by_batch.append(proj_on_cg)
+        sh = torch.stack(by_batch)
+    else:
+        sh = SO3.spherical_harmonics_xyz(
+            range(l_max + 1), relative_coords, sph_last=True, dtype=dtype, device=device
+        )
+    return sh
+
+
+def adjusted_projection(vectors, L_max, sum=False):
+    radii = vectors.norm(2, -1)
+    vectors = vectors[radii > 0.0]
+    radii = radii[radii > 0.0]
+
+    angles = SO3.xyz_to_angles(vectors)
+    coeff = SO3.spherical_harmonics_dirac(L_max, *angles)
+    coeff *= radii.unsqueeze(-2)
+    # Handle case where only have a center
+    if coeff.shape[1] == 0:
+        return torch.zeros(coeff.shape[0])
+
+    A = torch.einsum(
+        "ia,ib->ab", SO3.spherical_harmonics(range(L_max + 1), *angles), coeff
     )
-    if normalize:
-        sh = sh / sh.norm(dim=0, keepdim=True)
-    rank = len(sh.shape)
-    return sh.permute(*range(1, rank), 0).contiguous()
+    coeff *= torch.gels(radii, A).solution.view(-1)
+    if sum:
+        return coeff.sum(-1)
+    else:
+        rank = len(coeff.shape)
+        return coeff.permute(*range(1, rank), 0)
+
+
+def project_atom_onto_cg_features(
+    relative_coords, order, atom_inds, cg_ind, dtype=None, device=None
+):
+    sph = SO3.spherical_harmonics_xyz(
+        order, relative_coords, sph_last=True, dtype=dtype, device=device
+    )
+    try:
+        count_projected_atoms = len(atom_inds)
+    except TypeError:
+        count_projected_atoms = 1
+    index = (
+        torch.tensor(cg_ind, device=device)
+        .view(1, 1, 1, 1)
+        .expand(sph.size(0), count_projected_atoms, -1, sph.size(-1))
+    )
+    if not torch.is_tensor(atom_inds):
+        atom_inds = torch.tensor(atom_inds, device=device)
+    selected_sph = sph.clone().detach().index_select(1, atom_inds)
+    mask = torch.zeros_like(selected_sph).scatter_(-2, index, 1.0)
+    return (mask * selected_sph).sum(1)
 
 
 def data(args):
