@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 
 
 def sh_coeff_to_xyz_signal(sh_coeff, angular_resolution, r_scale=1.0):
-    sh_coeff = torch.from_numpy(sh_coeff)
+    if isinstance(sh_coeff, np.ndarray):
+        sh_coeff = torch.from_numpy(sh_coeff)
     a = torch.linspace(0, 2 * np.pi, angular_resolution, dtype=sh_coeff.dtype)
     b = torch.linspace(0, np.pi, angular_resolution, dtype=sh_coeff.dtype)
     a, b = torch.meshgrid([a, b])
