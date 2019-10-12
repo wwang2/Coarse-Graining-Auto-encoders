@@ -198,12 +198,12 @@ def parse_args(parser):
     args = parser.parse_args()
     args.precision = torch.float64 if args.double else torch.float32
     gpu = torch.cuda.is_available() and not args.cpu
-    args.device = torch.device("cuda:{}".format(args.device)) if gpu else torch.device("cpu")
+    args.device = torch.device("cuda:{}".format(args.gpu)) if gpu else torch.device("cpu")
 
     ACTS["softplus"] = rescaled_act.Softplus(args.softplus_beta)
     ACTS["shifted_softplus"] = rescaled_act.ShiftedSoftplus(args.softplus_beta)
 
-    print("Calculating on {}.".format(args.device))
+    print("Calculating on {}.".format(args.gpu))
     return args
 
 
