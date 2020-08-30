@@ -1,6 +1,6 @@
 # Coarse-Graining-Auto-encoders
 
-Implementation of coarse-graining Autoencoders for our paper https://arxiv.org/abs/1812.02706
+Implementation of coarse-graining Autoencoders for our paper https://www.nature.com/articles/s41524-019-0261-5/
 
 We include several simple examples of coarse-graining molecules.
 
@@ -22,11 +22,21 @@ numpy
 To cite our work:
 
 ```
-@article{Wang2018VCGAE,
+@article{Wang2018Coarse,
 author = {Wang, Wujie and G{\'{o}}mez-Bombarelli, Rafael},
-journal = {arXiv:1812.02706},
-title = {{Coarse-Graining Auto-Encoders for Molecular Dynamics}},
-url = {http://arxiv.org/abs/1812.02706 https://arxiv.org/abs/1812.02706},
-year = {2018}
+doi = {10.1038/s41524-019-0261-5},
+isbn = {4152401902615},
+issn = {2057-3960},
+journal = {npj Computational Materials},
+mendeley-groups = {MSM},
+month = {dec},
+number = {1},
+pages = {125},
+publisher = {Springer US},
+title = {{Coarse-graining auto-encoders for molecular dynamics}},
+url = {http://www.nature.com/articles/s41524-019-0261-5 http://dx.doi.org/10.1038/s41524-019-0261-5},
+volume = {5},
+year = {2019}
 }
+
 ```
