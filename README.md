@@ -12,6 +12,11 @@ We include several simple examples of coarse-graining molecules.
   <img src="movies/cg.gif" width="220"/> 
 </p>
 
+Coarse-Grained latent space of alanine dipeptide
+<p align="center">
+  <img src="movies/ala.jpg" width="650">
+</p>
+
 required packages:
 ```
 mdtraj     1.9.2
