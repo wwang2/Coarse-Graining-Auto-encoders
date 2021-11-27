@@ -2,6 +2,8 @@
 
 Implementation of coarse-graining Autoencoders for our paper https://www.nature.com/articles/s41524-019-0261-5/
 
+You can check out a Colab walk-through demo [here](https://colab.research.google.com/github/wwang2/Coarse-Graining-Auto-encoders/blob/master/cgae_alanine_dipeptide_colab_walkthrough.ipynb)
+
 We include several simple examples of coarse-graining molecules.
 
 <p align="center">
